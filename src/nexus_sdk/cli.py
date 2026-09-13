@@ -13,7 +13,7 @@ import zipfile
 from .core import RobotError, read_object, write_object
 from .project import validate_project
 
-SDK_VERSION = '0.4.1'
+SDK_VERSION = '0.4.2'
 SDK_RUNTIME_MIN = '0.4.0'
 SDK_REQUIREMENT = f'nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v{SDK_VERSION}.zip'
 VERSION_PATTERN = re.compile(r'\d+\.\d+(?:\.\d+)?')
@@ -110,9 +110,44 @@ def safe_zip_name(name: str):
     return name
 
 
+def ensure_sdk_requirement(root: Path):
+    requirements = root / 'requirements.txt'
+    current = requirements.read_text(encoding='utf-8') if requirements.exists() else ''
+    if SDK_REQUIREMENT in current:
+        return False
+    lines = current.splitlines()
+    without_old_sdk = [
+        line for line in lines
+        if not re.match(r'^\s*nexus[-_]sdk\b', line, re.IGNORECASE)
+        and 'github.com/NexusOrchestrator/nexus_sdk' not in line
+        and 'github.com/nexusorchestrator/nexus_sdk' not in line.lower()
+    ]
+    content = '\n'.join([SDK_REQUIREMENT, *without_old_sdk]).rstrip() + '\n'
+    requirements.write_text(content, encoding='utf-8')
+    return True
+
+
+def activation_command(venv_dir: Path):
+    if os.name == 'nt':
+        return str(venv_dir / 'Scripts' / 'activate')
+    return f'source {venv_dir / "bin" / "activate"}'
+
+
+def open_venv_shell(root: Path, venv_dir: Path):
+    environment = os.environ.copy()
+    bin_dir = venv_dir / ('Scripts' if os.name == 'nt' else 'bin')
+    environment['VIRTUAL_ENV'] = str(venv_dir)
+    environment['PATH'] = str(bin_dir) + os.pathsep + environment.get('PATH', '')
+    environment.pop('PYTHONHOME', None)
+    shell = os.environ.get('COMSPEC') if os.name == 'nt' else os.environ.get('SHELL', '/bin/sh')
+    print('Ambiente ativado nesta sessão. Digite exit para sair.')
+    subprocess.run([shell], cwd=root, env=environment, check=False)
+
+
 def create_virtualenv(args):
     root = args.project.resolve()
     validate_project(root, check_environment=False)
+    ensure_sdk_requirement(root)
     venv_dir = args.path.resolve() if args.path else root / '.venv'
     if venv_dir.exists() and not args.recreate:
         raise RobotError(f'Ambiente virtual já existe em {venv_dir}. Use --recreate para refazer.')
@@ -122,10 +157,14 @@ def create_virtualenv(args):
     subprocess.run([sys.executable, '-m', 'venv', str(venv_dir)], cwd=root, check=True)
     python = venv_dir / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
     subprocess.run([str(python), '-m', 'pip', 'install', '--upgrade', 'pip'], cwd=root, check=True)
-    requirements = root / 'requirements.txt'
-    if requirements.is_file() and requirements.stat().st_size:
-        subprocess.run([str(python), '-m', 'pip', 'install', '-r', str(requirements)], cwd=root, check=True)
-    print(json.dumps({'venv': str(venv_dir), 'python': str(python)}, ensure_ascii=False, indent=2))
+    subprocess.run([str(python), '-m', 'pip', 'install', SDK_REQUIREMENT], cwd=root, check=True)
+    if args.install_requirements:
+        subprocess.run([str(python), '-m', 'pip', 'install', '-r', str(root / 'requirements.txt')], cwd=root, check=True)
+    activate = activation_command(venv_dir)
+    print(json.dumps({'venv': str(venv_dir), 'python': str(python), 'activate': activate}, ensure_ascii=False, indent=2))
+    print(f'\nPara ativar no seu terminal:\n  {activate}')
+    if args.shell:
+        open_venv_shell(root, venv_dir)
 
 
 def package_project(args):
@@ -230,6 +269,8 @@ def main(argv=None):
     venv.add_argument('--project', type=Path, default=Path('.'))
     venv.add_argument('--path', type=Path, help='Caminho do ambiente virtual; padrão: <projeto>/.venv')
     venv.add_argument('--recreate', action='store_true', help='Remover e criar novamente se o ambiente já existir')
+    venv.add_argument('--install-requirements', action='store_true', help='Além do SDK, instalar todas as dependências do requirements.txt')
+    venv.add_argument('--shell', action='store_true', help='Abrir uma sessão de terminal já configurada com o ambiente virtual')
     run = sub.add_parser('run', help='Executar localmente sem API ou conta')
     run.add_argument('--project', type=Path, default=Path('.'))
     run.add_argument('--inputs', type=Path)

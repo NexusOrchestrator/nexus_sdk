@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from nexus_sdk import Context, RobotError, robot
 from nexus_sdk.core import encode_object
+from nexus_sdk.cli import activation_command, ensure_sdk_requirement
 
 
 class SDKTests(unittest.TestCase):
@@ -31,7 +32,7 @@ class SDKTests(unittest.TestCase):
             self.assertEqual(metadata['entrypoint'], 'bot.py')
             self.assertEqual(len(metadata['checksum']), 64)
             requirements = (project / 'requirements.txt').read_text()
-            self.assertIn('nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v0.4.1.zip', requirements)
+            self.assertIn('nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v0.4.2.zip', requirements)
             validation = json.loads(self.cli('validate', '--strict', cwd=project).stdout)
             self.assertEqual(validation['warnings'], [])
             self.assertNotEqual(self.cli('init', project).returncode, 0)
@@ -55,6 +56,24 @@ class SDKTests(unittest.TestCase):
             self.assertEqual(package['version'], '1.2.3')
             self.assertTrue((project / 'dist' / 'my-bot-1.2.3.zip').is_file())
             self.assertIn('version = "1.2.3"', (project / 'nexus.toml').read_text())
+
+    def test_venv_ensures_sdk_requirement_without_removing_bot_dependencies(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory) / 'my-bot'
+            self.cli('init', project)
+            (project / 'requirements.txt').write_text('playwright==1.62.0\n')
+            self.assertTrue(ensure_sdk_requirement(project))
+            requirements = (project / 'requirements.txt').read_text()
+            self.assertTrue(requirements.startswith('nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v0.4.2.zip\n'))
+            self.assertIn('playwright==1.62.0', requirements)
+            self.assertFalse(ensure_sdk_requirement(project))
+
+    def test_activation_command_points_to_project_venv(self):
+        command = activation_command(Path('/tmp/bot/.venv'))
+        if os.name == 'nt':
+            self.assertTrue(command.endswith(r'.venv\Scripts\activate') or command.endswith('.venv/Scripts/activate'))
+        else:
+            self.assertEqual(command, 'source /tmp/bot/.venv/bin/activate')
 
     def test_failure_is_nonzero_and_no_success_result(self):
         with tempfile.TemporaryDirectory() as directory:
