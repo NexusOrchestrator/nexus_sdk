@@ -3,6 +3,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -10,6 +12,11 @@ import tomllib
 import zipfile
 from .core import RobotError, read_object, write_object
 from .project import validate_project
+
+SDK_VERSION = '0.4.1'
+SDK_RUNTIME_MIN = '0.4.0'
+SDK_REQUIREMENT = f'nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v{SDK_VERSION}.zip'
+VERSION_PATTERN = re.compile(r'\d+\.\d+(?:\.\d+)?')
 
 BOT = '''from dataclasses import dataclass
 from nexus_sdk import Automation, Context, Model, RobotError, robot
@@ -53,11 +60,11 @@ def init_project(path):
         '    def test_processa_entrada(self):\n'
         '        response = run_robot(MeuBot, inputs={"name": "Teste"})\n'
         '        self.assertEqual(response.result["processed"], 1)\n', encoding='utf-8')
-    (path / 'nexus.toml').write_text('name = ' + json.dumps(path.resolve().name, ensure_ascii=False) + '\nentrypoint = "bot.py"\nversion = "1.0.0"\ncredentials = []\n\n[runtime]\npython = "3.12"\nsdk_min = "0.4.0"\n', encoding='utf-8')
+    (path / 'nexus.toml').write_text('name = ' + json.dumps(path.resolve().name, ensure_ascii=False) + f'\nentrypoint = "bot.py"\nversion = "1.0.0"\ncredentials = []\n\n[runtime]\npython = "3.12"\nsdk_min = "{SDK_RUNTIME_MIN}"\n', encoding='utf-8')
     (path / 'inputs.json').write_text('{"name": "Minha empresa"}\n', encoding='utf-8')
-    (path / 'requirements.txt').write_text('# Adicione aqui apenas as bibliotecas usadas pelo seu bot.\n', encoding='utf-8')
+    (path / 'requirements.txt').write_text(f'{SDK_REQUIREMENT}\n# Adicione abaixo apenas as bibliotecas usadas pelo seu bot.\n', encoding='utf-8')
     (path / '.gitignore').write_text('.venv/\n__pycache__/\nresult.json\n.env\n*.local.json\ndist/\n', encoding='utf-8')
-    (path / 'README.md').write_text('# Framework Nexus\n\nCom o SDK local instalado:\n\n```sh\nnexus run --inputs inputs.json\n```\n\nEdite `bot.py` para implementar sua automação. O SDK ainda não foi publicado no PyPI.\nInstale-o a partir de `apps/sdk` do repositório Nexus.\n', encoding='utf-8')
+    (path / 'README.md').write_text(f'# Framework Nexus\n\nExecute localmente:\n\n```sh\nnexus run --inputs inputs.json\n```\n\nEmpacote para publicar no Nexus:\n\n```sh\nnexus package\n```\n\nO `requirements.txt` já fixa o SDK na tag pública `{SDK_VERSION}`:\n\n```txt\n{SDK_REQUIREMENT}\n```\n\nAdicione suas dependências de automação abaixo dessa linha.\n', encoding='utf-8')
     print(f'Projeto criado em {path.resolve()}\nEntre na pasta e execute: nexus run --inputs inputs.json')
 
 
@@ -72,6 +79,96 @@ def entrypoint(path):
     if not script.is_relative_to(root) or script.suffix != '.py' or not script.is_file():
         raise RobotError('entrypoint deve apontar para um arquivo Python dentro do projeto.')
     return script
+
+
+def load_project_config(root: Path):
+    with (root / 'nexus.toml').open('rb') as stream:
+        return tomllib.load(stream)
+
+
+def validate_version(value: str):
+    if not isinstance(value, str) or not VERSION_PATTERN.fullmatch(value):
+        raise RobotError('Versão deve usar major.minor ou major.minor.patch, por exemplo 1.2.0.')
+    return value
+
+
+def update_project_version(root: Path, version: str):
+    config_path = root / 'nexus.toml'
+    content = config_path.read_text(encoding='utf-8')
+    if re.search(r'(?m)^version\s*=', content):
+        content = re.sub(r'(?m)^version\s*=.*$', f'version = {json.dumps(version)}', content, count=1)
+    else:
+        content = f'version = {json.dumps(version)}\n' + content
+    config_path.write_text(content, encoding='utf-8')
+
+
+def safe_zip_name(name: str):
+    if (not isinstance(name, str) or not name or name.startswith('.') or name.endswith(('.', ' '))
+            or any(character in name for character in '/\\:*?"<>|')
+            or any(ord(character) < 32 for character in name)):
+        raise RobotError('Nome do projeto inválido para um arquivo ZIP.')
+    return name
+
+
+def create_virtualenv(args):
+    root = args.project.resolve()
+    validate_project(root, check_environment=False)
+    venv_dir = args.path.resolve() if args.path else root / '.venv'
+    if venv_dir.exists() and not args.recreate:
+        raise RobotError(f'Ambiente virtual já existe em {venv_dir}. Use --recreate para refazer.')
+    if venv_dir.exists():
+        shutil.rmtree(venv_dir)
+    print(f'Criando ambiente virtual em {venv_dir}')
+    subprocess.run([sys.executable, '-m', 'venv', str(venv_dir)], cwd=root, check=True)
+    python = venv_dir / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
+    subprocess.run([str(python), '-m', 'pip', 'install', '--upgrade', 'pip'], cwd=root, check=True)
+    requirements = root / 'requirements.txt'
+    if requirements.is_file() and requirements.stat().st_size:
+        subprocess.run([str(python), '-m', 'pip', 'install', '-r', str(requirements)], cwd=root, check=True)
+    print(json.dumps({'venv': str(venv_dir), 'python': str(python)}, ensure_ascii=False, indent=2))
+
+
+def package_project(args):
+    root = args.project.resolve()
+    if args.version:
+        update_project_version(root, validate_version(args.version))
+    validate_project(root, check_environment=False)
+    script = entrypoint(args.project)
+    config = load_project_config(root)
+    name = safe_zip_name(config.get('name', root.name))
+    version = validate_version(config.get('version', '1.0.0'))
+    output = (args.output or root / 'dist' / f'{name}-{version}.zip').resolve()
+    if output.suffix.lower() != '.zip':
+        raise RobotError('O pacote deve ter extensão .zip.')
+    if output.is_relative_to(root):
+        ignored_output = output
+    else:
+        ignored_output = None
+    output.parent.mkdir(parents=True, exist_ok=True)
+    ignored = {'.git', '.venv', '__pycache__', '.pytest_cache', 'dist', '.env'}
+    files = [path for path in root.rglob('*') if path.is_file()
+             and not any(part in ignored for part in path.relative_to(root).parts)
+             and path != ignored_output
+             and not path.name.startswith('.env.') and not path.name.endswith('.local.json') and path.name != 'result.json']
+    if any(path.is_symlink() or not path.resolve().is_relative_to(root) for path in files):
+        raise RobotError('O pacote não pode conter links simbólicos.')
+    if sum(path.stat().st_size for path in files) > 250 * 1024 * 1024:
+        raise RobotError('O projeto excede 250 MB descompactados.')
+    if len(files) > 2000:
+        raise RobotError('O projeto contém mais de 2000 arquivos.')
+    with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+        for path in sorted(files):
+            relative = path.relative_to(root).as_posix()
+            info = zipfile.ZipInfo(relative, (1980, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = 0o644 << 16
+            archive.writestr(info, path.read_bytes())
+    if output.stat().st_size > 50 * 1024 * 1024:
+        output.unlink()
+        raise RobotError('O pacote excede 50 MB.')
+    print(json.dumps({'file': str(output), 'version': version, 'entrypoint': script.relative_to(root).as_posix(),
+                      'checksum': hashlib.sha256(output.read_bytes()).hexdigest(),
+                      'size_bytes': output.stat().st_size}, indent=2))
 
 
 def run_local(args):
@@ -129,6 +226,10 @@ def main(argv=None):
     sub = parser.add_subparsers(dest='command', required=True)
     init = sub.add_parser('init', help='Criar um projeto em uma nova pasta')
     init.add_argument('directory', type=Path)
+    venv = sub.add_parser('venv', help='Criar ambiente virtual do projeto e instalar dependências')
+    venv.add_argument('--project', type=Path, default=Path('.'))
+    venv.add_argument('--path', type=Path, help='Caminho do ambiente virtual; padrão: <projeto>/.venv')
+    venv.add_argument('--recreate', action='store_true', help='Remover e criar novamente se o ambiente já existir')
     run = sub.add_parser('run', help='Executar localmente sem API ou conta')
     run.add_argument('--project', type=Path, default=Path('.'))
     run.add_argument('--inputs', type=Path)
@@ -140,7 +241,8 @@ def main(argv=None):
     inspect.add_argument('--project', type=Path, default=Path('.'))
     package = sub.add_parser('package', help='Criar ZIP reproduzível para publicar no Nexus')
     package.add_argument('--project', type=Path, default=Path('.'))
-    package.add_argument('--output', type=Path, help='Caminho explícito; padrão: <projeto>/dist/<nome>.zip')
+    package.add_argument('--version', help='Atualizar nexus.toml e gerar ZIP com esta versão')
+    package.add_argument('--output', type=Path, help='Caminho explícito; padrão: <projeto>/dist/<nome>-<versão>.zip')
     validate = sub.add_parser('validate', help='Validar configuração sem executar o código do bot')
     validate.add_argument('--project', type=Path, default=Path('.'))
     validate.add_argument('--strict', action='store_true', help='Tratar avisos como erros')
@@ -148,6 +250,8 @@ def main(argv=None):
     try:
         if args.command == 'init':
             init_project(args.directory)
+        elif args.command == 'venv':
+            create_virtualenv(args)
         elif args.command == 'run':
             return run_local(args)
         elif args.command == 'validate':
@@ -159,48 +263,7 @@ def main(argv=None):
             print(json.dumps({'package_path': script.relative_to(args.project.resolve()).as_posix(), 'entrypoint': script.name,
                               'checksum': hashlib.sha256(script.read_bytes()).hexdigest()}, indent=2))
         else:
-            root = args.project.resolve()
-            validate_project(root, check_environment=False)
-            script = entrypoint(args.project)
-            with (root / 'nexus.toml').open('rb') as stream:
-                config = tomllib.load(stream)
-            name = config.get('name', root.name)
-            if (not isinstance(name, str) or not name or name.startswith('.') or name.endswith(('.', ' '))
-                    or any(character in name for character in '/\\:*?"<>|')
-                    or any(ord(character) < 32 for character in name)):
-                raise RobotError('Nome do projeto inválido para um arquivo ZIP.')
-            output = (args.output or root / 'dist' / f'{name}.zip').resolve()
-            if output.suffix.lower() != '.zip':
-                raise RobotError('O pacote deve ter extensão .zip.')
-            if output.is_relative_to(root):
-                ignored_output = output
-            else:
-                ignored_output = None
-            output.parent.mkdir(parents=True, exist_ok=True)
-            ignored = {'.git', '.venv', '__pycache__', '.pytest_cache', 'dist', '.env'}
-            files = [path for path in root.rglob('*') if path.is_file()
-                     and not any(part in ignored for part in path.relative_to(root).parts)
-                     and path != ignored_output
-                     and not path.name.startswith('.env.') and not path.name.endswith('.local.json') and path.name != 'result.json']
-            if any(path.is_symlink() or not path.resolve().is_relative_to(root) for path in files):
-                raise RobotError('O pacote não pode conter links simbólicos.')
-            if sum(path.stat().st_size for path in files) > 250 * 1024 * 1024:
-                raise RobotError('O projeto excede 250 MB descompactados.')
-            if len(files) > 2000:
-                raise RobotError('O projeto contém mais de 2000 arquivos.')
-            with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
-                for path in sorted(files):
-                    relative = path.relative_to(root).as_posix()
-                    info = zipfile.ZipInfo(relative, (1980, 1, 1, 0, 0, 0))
-                    info.compress_type = zipfile.ZIP_DEFLATED
-                    info.external_attr = 0o644 << 16
-                    archive.writestr(info, path.read_bytes())
-            if output.stat().st_size > 50 * 1024 * 1024:
-                output.unlink()
-                raise RobotError('O pacote excede 50 MB.')
-            print(json.dumps({'file': str(output), 'entrypoint': script.relative_to(root).as_posix(),
-                              'checksum': hashlib.sha256(output.read_bytes()).hexdigest(),
-                              'size_bytes': output.stat().st_size}, indent=2))
+            package_project(args)
         return 0
     except (OSError, ValueError, RobotError) as error:
         print(f'Erro: {error}', file=sys.stderr)

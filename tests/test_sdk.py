@@ -11,8 +11,11 @@ from nexus_sdk.core import encode_object
 
 class SDKTests(unittest.TestCase):
     def cli(self, *args, cwd=None):
+        env = os.environ.copy()
+        source = str(Path(__file__).resolve().parents[1] / 'src')
+        env['PYTHONPATH'] = source + (os.pathsep + env['PYTHONPATH'] if env.get('PYTHONPATH') else '')
         return subprocess.run([sys.executable, '-m', 'nexus_sdk.cli', *map(str, args)], cwd=cwd,
-                              capture_output=True, text=True)
+                              capture_output=True, text=True, env=env)
 
     def test_scaffold_run_and_inspect(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -27,15 +30,31 @@ class SDKTests(unittest.TestCase):
             metadata = json.loads(self.cli('inspect', cwd=project).stdout)
             self.assertEqual(metadata['entrypoint'], 'bot.py')
             self.assertEqual(len(metadata['checksum']), 64)
+            requirements = (project / 'requirements.txt').read_text()
+            self.assertIn('nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v0.4.1.zip', requirements)
+            validation = json.loads(self.cli('validate', '--strict', cwd=project).stdout)
+            self.assertEqual(validation['warnings'], [])
             self.assertNotEqual(self.cli('init', project).returncode, 0)
             packaged = self.cli('package', cwd=project)
             self.assertEqual(packaged.returncode, 0, packaged.stderr)
             package = json.loads(packaged.stdout)
-            self.assertTrue((project / 'dist' / 'my-bot.zip').is_file())
+            self.assertTrue((project / 'dist' / 'my-bot-1.0.0.zip').is_file())
+            self.assertEqual(package['version'], '1.0.0')
             self.assertEqual(package['entrypoint'], 'bot.py')
             import zipfile
-            with zipfile.ZipFile(project / 'dist' / 'my-bot.zip') as archive:
+            with zipfile.ZipFile(project / 'dist' / 'my-bot-1.0.0.zip') as archive:
                 self.assertIn('bot.py', archive.namelist())
+
+    def test_package_accepts_version_and_updates_project_config(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory) / 'my-bot'
+            self.cli('init', project)
+            packaged = self.cli('package', '--version', '1.2.3', cwd=project)
+            self.assertEqual(packaged.returncode, 0, packaged.stderr)
+            package = json.loads(packaged.stdout)
+            self.assertEqual(package['version'], '1.2.3')
+            self.assertTrue((project / 'dist' / 'my-bot-1.2.3.zip').is_file())
+            self.assertIn('version = "1.2.3"', (project / 'nexus.toml').read_text())
 
     def test_failure_is_nonzero_and_no_success_result(self):
         with tempfile.TemporaryDirectory() as directory:
