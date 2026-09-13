@@ -1,0 +1,114 @@
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import unittest
+from nexus_sdk import Context, RobotError, robot
+from nexus_sdk.core import encode_object
+
+
+class SDKTests(unittest.TestCase):
+    def cli(self, *args, cwd=None):
+        return subprocess.run([sys.executable, '-m', 'nexus_sdk.cli', *map(str, args)], cwd=cwd,
+                              capture_output=True, text=True)
+
+    def test_scaffold_run_and_inspect(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory) / 'my-bot'
+            response = self.cli('init', project)
+            self.assertEqual(response.returncode, 0, response.stderr)
+            result = self.cli('run', '--inputs', 'inputs.json', '--output', 'result.json', cwd=project)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout), {'message': 'Olá, Minha empresa!', 'processed': 1})
+            self.assertEqual(json.loads((project / 'result.json').read_text()), json.loads(result.stdout))
+            self.assertIn('Iniciando automação', result.stderr)
+            metadata = json.loads(self.cli('inspect', cwd=project).stdout)
+            self.assertEqual(metadata['entrypoint'], 'bot.py')
+            self.assertEqual(len(metadata['checksum']), 64)
+            self.assertNotEqual(self.cli('init', project).returncode, 0)
+            packaged = self.cli('package', cwd=project)
+            self.assertEqual(packaged.returncode, 0, packaged.stderr)
+            package = json.loads(packaged.stdout)
+            self.assertTrue((project / 'dist' / 'my-bot.zip').is_file())
+            self.assertEqual(package['entrypoint'], 'bot.py')
+            import zipfile
+            with zipfile.ZipFile(project / 'dist' / 'my-bot.zip') as archive:
+                self.assertIn('bot.py', archive.namelist())
+
+    def test_failure_is_nonzero_and_no_success_result(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory) / 'bot'
+            self.cli('init', project)
+            (project / 'inputs.json').write_text('{"name": ""}')
+            response = self.cli('run', '--inputs', 'inputs.json', cwd=project)
+            self.assertEqual(response.returncode, 1)
+            self.assertIn('ROBOT_ERROR', response.stderr)
+            self.assertEqual(response.stdout, '')
+
+    def test_invalid_inputs_and_output_protection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory) / 'bot'
+            self.cli('init', project)
+            (project / 'inputs.json').write_text('[]')
+            self.assertEqual(self.cli('run', '--inputs', 'inputs.json', cwd=project).returncode, 1)
+            original = (project / 'bot.py').read_bytes()
+            self.assertEqual(self.cli('run', '--output', 'bot.py', cwd=project).returncode, 1)
+            self.assertEqual((project / 'bot.py').read_bytes(), original)
+
+    def test_direct_context(self):
+        @robot
+        def example(ctx):
+            return {'value': ctx.inputs['value'] * 2}
+        self.assertEqual(example(Context(inputs={'value': 3})), {'value': 6})
+        context = Context(inputs={}, secrets={'erp': {'password': 'hidden'}})
+        self.assertEqual(context.secrets['erp']['password'], 'hidden')
+        self.assertNotIn('hidden', repr(context))
+
+    def test_contract_validation(self):
+        for value in ([], {'value': float('nan')}, {'value': object()}, {'value': 'a' * 32768}):
+            with self.assertRaises(RobotError):
+                encode_object(value)
+
+    def test_multiple_bots_and_unexpected_errors(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory) / 'bot'
+            self.cli('init', project)
+            script = project / 'bot.py'
+            script.write_text('from nexus_sdk import robot\n@robot\ndef one(ctx): return {}\n@robot\ndef two(ctx): return {}\n')
+            result = self.cli('run', cwd=project)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn('apenas uma', result.stderr)
+            script.write_text('from nexus_sdk import robot\n@robot\ndef one(ctx): raise ValueError("secret-value")\n')
+            result = self.cli('run', cwd=project)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn('UNEXPECTED_ERROR', result.stderr)
+            self.assertNotIn('secret-value', result.stderr)
+            debug = self.cli('run', '--debug', cwd=project)
+            self.assertEqual(debug.returncode, 1)
+            self.assertIn('Traceback', debug.stderr)
+            self.assertIn('secret-value', debug.stderr)
+
+    def test_explicit_main_guard_is_not_run_twice(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory) / 'bot'
+            self.cli('init', project)
+            (project / 'bot.py').write_text('from nexus_sdk import robot\ncount=0\n@robot\ndef one(ctx):\n global count\n count+=1\n assert count==1\n return {"count":count}\nif __name__=="__main__": one()\n')
+            response = self.cli('run', cwd=project)
+            self.assertEqual(response.returncode, 0, response.stderr)
+            self.assertEqual(json.loads(response.stdout), {'count': 1})
+
+    def test_project_modules_and_assets_are_available(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory) / 'bot'
+            self.cli('init', project)
+            (project / 'helper.py').write_text('def value(): return "module"\n')
+            (project / 'asset.txt').write_text('asset')
+            (project / 'bot.py').write_text(
+                'from pathlib import Path\nfrom nexus_sdk import robot\nfrom helper import value\n'
+                '@robot\ndef run(ctx): return {"module": value(), "asset": Path("asset.txt").read_text()}\n'
+            )
+            response = self.cli('run', cwd=project)
+            self.assertEqual(response.returncode, 0, response.stderr)
+            self.assertEqual(json.loads(response.stdout), {'module': 'module', 'asset': 'asset'})
