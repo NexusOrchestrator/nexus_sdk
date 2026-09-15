@@ -146,6 +146,8 @@ sdk_min = "0.4.0"
 
 ## Comandos disponíveis
 
+Desenvolvimento local (sem conta):
+
 ```bash
 nexus init
 nexus venv
@@ -153,6 +155,35 @@ nexus validate
 nexus run
 nexus package
 ```
+
+Autenticado (Personal Access Token), com paridade total ao painel web:
+
+```bash
+nexus login
+nexus whoami
+nexus logout
+nexus publish
+nexus automation-create
+nexus set-current
+nexus promote
+nexus credential-create
+nexus credential-list
+nexus credential-bind
+nexus environment-set
+nexus environment-get
+nexus trigger-create
+nexus trigger-list
+nexus queue-create
+nexus queue-bind
+nexus queue-send
+nexus webhook-create
+nexus webhook-list
+nexus execution-create
+nexus execution-list
+nexus execution-logs
+```
+
+Veja exemplos completos de cada comando em [docs/sdk.md](../../docs/sdk.md).
 
 ## Publicação no GitHub
 

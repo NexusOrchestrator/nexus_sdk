@@ -3,7 +3,9 @@ pyproject.toml
 src/nexus_sdk/__init__.py
 src/nexus_sdk/cli.py
 src/nexus_sdk/core.py
+src/nexus_sdk/credentials.py
 src/nexus_sdk/errors.py
+src/nexus_sdk/http.py
 src/nexus_sdk/models.py
 src/nexus_sdk/project.py
 src/nexus_sdk/queues.py
