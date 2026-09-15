@@ -12,6 +12,8 @@ import tomllib
 import zipfile
 from .core import RobotError, read_object, write_object
 from .project import validate_project
+from .credentials import save_credentials, load_credentials, clear_credentials
+from .http import api_request, api_upload
 
 SDK_VERSION = '0.4.2'
 SDK_RUNTIME_MIN = '0.4.0'
@@ -260,6 +262,74 @@ def run_local(args):
         return 0
 
 
+def login(args):
+    base_url = args.api_url.rstrip('/')
+    token = args.token or input('Cole seu Personal Access Token (nxs_...): ').strip()
+    if not token.startswith('nxs_'):
+        raise RobotError('Token inválido. Gere um token pessoal em Perfil > Tokens de API.')
+    profile = api_request(base_url, 'GET', '/auth/profile', token=token)
+    tokens = api_request(base_url, 'GET', '/auth/tokens', token=token)
+    organization_id, organization_name = None, None
+    matching = [item for item in (tokens or []) if item.get('prefix') and token.startswith(item['prefix'])]
+    if matching:
+        organization_id = matching[0]['organization_id']
+        organization_name = matching[0]['organization_name']
+    save_credentials(base_url, token, organization_id, organization_name)
+    print(json.dumps({'logged_in_as': profile.get('email'), 'api_url': base_url, 'organization': organization_name}, ensure_ascii=False, indent=2))
+
+
+def logout(args):
+    clear_credentials()
+    print('Sessão local removida.')
+
+
+def whoami(args):
+    credentials = load_credentials()
+    if not credentials:
+        raise RobotError('Você não está autenticado. Execute: nexus login')
+    profile = api_request(credentials['api_base_url'], 'GET', '/auth/profile', token=credentials['token'])
+    print(json.dumps({'email': profile.get('email'), 'api_url': credentials['api_base_url'],
+                      'organization': credentials.get('organization_name')}, ensure_ascii=False, indent=2))
+
+
+def publish_project(args):
+    credentials = load_credentials()
+    if not credentials:
+        raise RobotError('Você não está autenticado. Execute: nexus login')
+    root = args.project.resolve()
+    if args.version:
+        update_project_version(root, validate_version(args.version))
+    validate_project(root, check_environment=False)
+    config = load_project_config(root)
+    automation_id = config.get('automation_id')
+    base_url = credentials['api_base_url']
+    token = credentials['token']
+    if not automation_id:
+        created = api_request(base_url, 'POST', '/automations', token=token, payload={'name': config.get('name', root.name)})
+        automation_id = created['id']
+        config_path = root / 'nexus.toml'
+        content = config_path.read_text(encoding='utf-8')
+        config_path.write_text(content + f'\nautomation_id = "{automation_id}"\n', encoding='utf-8')
+        print(f'Automação criada: {automation_id}')
+    script = entrypoint(root)
+    name = safe_zip_name(config.get('name', root.name))
+    version = validate_version(config.get('version', '1.0.0'))
+    with tempfile.TemporaryDirectory(prefix='nexus-publish-') as directory:
+        args.project = root
+        args.output = Path(directory) / f'{name}-{version}.zip'
+        package_project(args)
+        package_bytes = args.output.read_bytes()
+    uploaded = api_upload(
+        base_url, f'/automations/{automation_id}/versions/upload', token,
+        fields={'version': version, 'entrypoint': script.relative_to(root).as_posix(), 'change_type': 'FEATURE'},
+        file_field='package', file_name=f'{name}-{version}.zip', file_bytes=package_bytes,
+    )
+    if args.publish:
+        api_request(base_url, 'POST', f'/automations/{automation_id}/versions/{uploaded["id"]}/publish', token=token)
+    print(json.dumps({'automation_id': automation_id, 'version_id': uploaded['id'], 'version': version,
+                      'published': bool(args.publish)}, ensure_ascii=False, indent=2))
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog='nexus', description='Crie e teste seus bots Nexus localmente.')
     sub = parser.add_subparsers(dest='command', required=True)
@@ -287,6 +357,15 @@ def main(argv=None):
     validate = sub.add_parser('validate', help='Validar configuração sem executar o código do bot')
     validate.add_argument('--project', type=Path, default=Path('.'))
     validate.add_argument('--strict', action='store_true', help='Tratar avisos como erros')
+    login_parser = sub.add_parser('login', help='Autenticar o CLI com um Personal Access Token')
+    login_parser.add_argument('--api-url', default=os.environ.get('NEXUS_API_URL', 'https://api.nexusorchestrator.com'), help='URL base da API Nexus')
+    login_parser.add_argument('--token', help='Personal Access Token (nxs_...); se omitido, será solicitado interativamente')
+    sub.add_parser('logout', help='Remover as credenciais salvas localmente')
+    sub.add_parser('whoami', help='Mostrar a conta autenticada atualmente')
+    publish = sub.add_parser('publish', help='Empacotar e enviar uma nova versão para o Nexus')
+    publish.add_argument('--project', type=Path, default=Path('.'))
+    publish.add_argument('--version', help='Atualizar nexus.toml e publicar com esta versão')
+    publish.add_argument('--publish', action='store_true', help='Publicar a versão imediatamente após o envio')
     args = parser.parse_args(argv)
     try:
         if args.command == 'init':
@@ -303,6 +382,14 @@ def main(argv=None):
             script = entrypoint(args.project)
             print(json.dumps({'package_path': script.relative_to(args.project.resolve()).as_posix(), 'entrypoint': script.name,
                               'checksum': hashlib.sha256(script.read_bytes()).hexdigest()}, indent=2))
+        elif args.command == 'login':
+            login(args)
+        elif args.command == 'logout':
+            logout(args)
+        elif args.command == 'whoami':
+            whoami(args)
+        elif args.command == 'publish':
+            publish_project(args)
         else:
             package_project(args)
         return 0
