@@ -205,10 +205,10 @@ Para publicar uma nova versão:
 cd apps/sdk
 git status
 git add .
-git commit -m "Release SDK 0.4.2"
-git tag v0.4.2
+git commit -m "Release SDK 0.4.4"
+git tag v0.4.4
 git push origin main
-git push origin v0.4.2
+git push origin v0.4.4
 ```
 
 Atualize a versão em:
