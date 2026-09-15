@@ -12,10 +12,10 @@ import tomllib
 import zipfile
 from .core import RobotError, read_object, write_object
 from .project import validate_project
-from .credentials import save_credentials, load_credentials, clear_credentials
+from .credentials import save_credentials, load_credentials, clear_credentials, set_default_environment
 from .http import api_request, api_upload
 
-SDK_VERSION = '0.4.2'
+SDK_VERSION = '0.4.3'
 SDK_RUNTIME_MIN = '0.4.0'
 SDK_REQUIREMENT = f'nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v{SDK_VERSION}.zip'
 VERSION_PATTERN = re.compile(r'\d+\.\d+(?:\.\d+)?')
@@ -350,6 +350,15 @@ def resolve_environment_id(base_url, token, key):
     raise RobotError(f'Ambiente {key} não encontrado ou não permitido para o seu perfil.')
 
 
+def environment_use(args):
+    credentials = require_credentials()
+    base_url, token = credentials['api_base_url'], credentials['token']
+    # Validates access before persisting: /environments only lists environments the token's org membership can see.
+    resolve_environment_id(base_url, token, args.key)
+    set_default_environment(args.key)
+    print_result({'default_environment': args.key}, args.json)
+
+
 def resolve_version_id(base_url, token, automation_id, version):
     versions = api_request(base_url, 'GET', f'/automations/{automation_id}/versions', token=token)
     for item in versions or []:
@@ -639,6 +648,8 @@ def publish_project(args):
 
 
 def main(argv=None):
+    # Falls back to DEVELOPMENT until the user runs `nexus environment-use`.
+    default_environment = (load_credentials() or {}).get('default_environment', 'DEVELOPMENT')
     parser = argparse.ArgumentParser(prog='nexus', description='Crie e teste seus bots Nexus localmente.')
     parser.add_argument('--json', action='store_true', help='Exibir a resposta bruta em JSON em vez de uma tabela/lista legível')
     sub = parser.add_subparsers(dest='command', required=True)
@@ -677,13 +688,13 @@ def main(argv=None):
     publish.add_argument('--publish', action='store_true', help='Publicar a versão imediatamente após o envio')
     set_current_parser = sub.add_parser('set-current', help='Definir a versão ativa da automação em um ambiente')
     set_current_parser.add_argument('--project', type=Path, default=Path('.'))
-    set_current_parser.add_argument('--environment', default='DEVELOPMENT', choices=['DEVELOPMENT', 'STAGING', 'PRODUCTION'], help='Ambiente onde a versão será definida como atual')
+    set_current_parser.add_argument('--environment', default=default_environment, choices=['DEVELOPMENT', 'STAGING', 'PRODUCTION'], help='Ambiente onde a versão será definida como atual')
     set_current_group = set_current_parser.add_mutually_exclusive_group(required=True)
     set_current_group.add_argument('--version', help='Versão publicada (ex: 1.0.1)')
     set_current_group.add_argument('--version-id', help='ID da versão publicada')
     promote_parser = sub.add_parser('promote', help='Promover uma versão para o próximo ambiente do pipeline')
     promote_parser.add_argument('--project', type=Path, default=Path('.'))
-    promote_parser.add_argument('--from', dest='from_environment', default='DEVELOPMENT', choices=['DEVELOPMENT', 'STAGING'], help='Ambiente de origem da promoção')
+    promote_parser.add_argument('--from', dest='from_environment', default=default_environment if default_environment != 'PRODUCTION' else 'DEVELOPMENT', choices=['DEVELOPMENT', 'STAGING'], help='Ambiente de origem da promoção')
     promote_parser.add_argument('--to', required=True, choices=['STAGING', 'PRODUCTION'], help='Ambiente de destino da promoção')
     promote_group = promote_parser.add_mutually_exclusive_group()
     promote_group.add_argument('--version', help='Versão publicada (ex: 1.0.1)')
@@ -691,29 +702,32 @@ def main(argv=None):
 
     environment_choices = ['DEVELOPMENT', 'STAGING', 'PRODUCTION']
 
+    environment_use_parser = sub.add_parser('environment-use', help='Definir o ambiente padrão usado quando --environment não é informado (valida acesso antes de salvar)')
+    environment_use_parser.add_argument('key', choices=environment_choices)
+
     automation_create_parser = sub.add_parser('automation-create', help='Criar a automação no Nexus sem publicar nenhuma versão')
     automation_create_parser.add_argument('--project', type=Path, default=Path('.'))
     automation_create_parser.add_argument('--name', help='Nome da automação (padrão: nome do projeto)')
 
     credential_create_parser = sub.add_parser('credential-create', help='Criar uma credencial no ambiente selecionado')
     credential_create_parser.add_argument('--name', required=True)
-    credential_create_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+    credential_create_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
     credential_create_parser.add_argument('--data', action='append', metavar='CHAVE=VALOR', required=True, help='Par chave=valor; pode repetir')
     credential_create_parser.add_argument('--expires-at', help='Data ISO 8601 de expiração')
     credential_create_parser.add_argument('--auto-rotate-days', type=int)
     credential_create_parser.add_argument('--responsible-email', help='E-mail do responsável pela credencial')
 
     credential_list_parser = sub.add_parser('credential-list', help='Listar credenciais do ambiente')
-    credential_list_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+    credential_list_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
 
     credential_bind_parser = sub.add_parser('credential-bind', help='Associar credenciais à automação do projeto')
     credential_bind_parser.add_argument('--project', type=Path, default=Path('.'))
-    credential_bind_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+    credential_bind_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
     credential_bind_parser.add_argument('--credential-id', action='append', required=True, help='ID da credencial; pode repetir')
 
     trigger_create_parser = sub.add_parser('trigger-create', help='Criar um disparador (agendamento ou webhook)')
     trigger_create_parser.add_argument('--project', type=Path, default=Path('.'))
-    trigger_create_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+    trigger_create_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
     trigger_create_parser.add_argument('--name', required=True)
     trigger_create_parser.add_argument('--type', required=True, choices=['SCHEDULE', 'WEBHOOK'])
     trigger_create_parser.add_argument('--cron', help='Expressão cron; obrigatório para type=SCHEDULE')
@@ -729,55 +743,55 @@ def main(argv=None):
 
     trigger_list_parser = sub.add_parser('trigger-list', help='Listar disparadores da automação do projeto')
     trigger_list_parser.add_argument('--project', type=Path, default=Path('.'))
-    trigger_list_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+    trigger_list_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
 
     queue_create_parser = sub.add_parser('queue-create', help='Criar uma fila no ambiente selecionado')
     queue_create_parser.add_argument('--name', required=True)
     queue_create_parser.add_argument('--description')
-    queue_create_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+    queue_create_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
 
     queue_bind_parser = sub.add_parser('queue-bind', help='Associar filas de entrada/saída à automação do projeto')
     queue_bind_parser.add_argument('--project', type=Path, default=Path('.'))
-    queue_bind_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+    queue_bind_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
     queue_bind_parser.add_argument('--input-queue-id')
     queue_bind_parser.add_argument('--output-queue-id')
 
     queue_send_parser = sub.add_parser('queue-send', help='Publicar uma mensagem em uma fila')
     queue_send_parser.add_argument('--queue-id', required=True)
-    queue_send_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+    queue_send_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
     queue_send_parser.add_argument('--data', action='append', metavar='CHAVE=VALOR', required=True, help='Par chave=valor; pode repetir')
 
     execution_create_parser = sub.add_parser('execution-create', help='Disparar uma nova execução')
     execution_create_parser.add_argument('--project', type=Path, default=Path('.'))
-    execution_create_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+    execution_create_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
     execution_create_parser.add_argument('--version-id', help='ID de versão específica (padrão: versão atual do ambiente)')
     execution_create_parser.add_argument('--request-key', required=True, help='Chave de idempotência da requisição')
     execution_create_parser.add_argument('--input', action='append', metavar='CHAVE=VALOR', help='Parâmetro de entrada; pode repetir')
     execution_create_parser.add_argument('--timeout', type=int, default=300)
 
     execution_list_parser = sub.add_parser('execution-list', help='Listar execuções do ambiente')
-    execution_list_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+    execution_list_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
     execution_list_parser.add_argument('--status')
     execution_list_parser.add_argument('--limit', type=int, default=50)
 
     execution_logs_parser = sub.add_parser('execution-logs', help='Ver logs de uma execução')
     execution_logs_parser.add_argument('--execution-id', required=True)
-    execution_logs_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+    execution_logs_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
     execution_logs_parser.add_argument('--level')
     execution_logs_parser.add_argument('--limit', type=int, default=50)
 
     environment_set_parser = sub.add_parser('environment-set', help='Definir variáveis de ambiente (ENV) da automação')
     environment_set_parser.add_argument('--project', type=Path, default=Path('.'))
-    environment_set_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+    environment_set_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
     environment_set_parser.add_argument('--set', action='append', metavar='NOME=VALOR', required=True, dest='set', help='Par nome=valor; pode repetir. Substitui todas as variáveis existentes.')
 
     environment_get_parser = sub.add_parser('environment-get', help='Ver variáveis de ambiente (ENV) da automação')
     environment_get_parser.add_argument('--project', type=Path, default=Path('.'))
-    environment_get_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+    environment_get_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
 
     webhook_create_parser = sub.add_parser('webhook-create', help='Criar uma ação de saída (webhook de execução)')
     webhook_create_parser.add_argument('--project', type=Path, default=Path('.'))
-    webhook_create_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+    webhook_create_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
     webhook_create_parser.add_argument('--name', required=True)
     webhook_create_parser.add_argument('--url', required=True)
     webhook_create_parser.add_argument('--method', default='POST', choices=['POST', 'PUT', 'PATCH', 'GET'])
@@ -787,7 +801,7 @@ def main(argv=None):
 
     webhook_list_parser = sub.add_parser('webhook-list', help='Listar ações de saída (webhooks) da automação')
     webhook_list_parser.add_argument('--project', type=Path, default=Path('.'))
-    webhook_list_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+    webhook_list_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
 
     args = parser.parse_args(argv)
     try:
@@ -839,6 +853,8 @@ def main(argv=None):
             execution_list(args)
         elif args.command == 'execution-logs':
             execution_logs(args)
+        elif args.command == 'environment-use':
+            environment_use(args)
         elif args.command == 'automation-create':
             automation_create(args)
         elif args.command == 'environment-set':

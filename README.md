@@ -169,6 +169,7 @@ nexus promote
 nexus credential-create
 nexus credential-list
 nexus credential-bind
+nexus environment-use
 nexus environment-set
 nexus environment-get
 nexus trigger-create
@@ -184,6 +185,8 @@ nexus execution-logs
 ```
 
 Por padrão a saída é impressa de forma legível (tabela para listas, `chave: valor` para objetos); use `--json` antes do subcomando (ex: `nexus --json trigger-list`) para obter a resposta bruta da API em JSON, útil em scripts/CI.
+
+Use `nexus environment-use STAGING` para definir o ambiente padrão usado quando `--environment` não é informado nos demais comandos; o comando valida se seu token tem acesso ao ambiente (consultando `/environments`) antes de salvar a preferência localmente.
 
 Veja exemplos completos de cada comando em [docs/sdk.md](../../docs/sdk.md).
 

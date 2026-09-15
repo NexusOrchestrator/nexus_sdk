@@ -31,6 +31,18 @@ def load_credentials():
         return None
 
 
+def set_default_environment(key: str):
+    credentials = load_credentials()
+    if not credentials:
+        return
+    credentials['default_environment'] = key
+    CREDENTIALS_PATH.write_text(json.dumps(credentials, indent=2), encoding='utf-8')
+    try:
+        os.chmod(CREDENTIALS_PATH, stat.S_IRUSR | stat.S_IWUSR)
+    except OSError:
+        pass
+
+
 def clear_credentials():
     if CREDENTIALS_PATH.exists():
         CREDENTIALS_PATH.unlink()
