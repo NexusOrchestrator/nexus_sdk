@@ -183,6 +183,8 @@ nexus execution-list
 nexus execution-logs
 ```
 
+Por padrão a saída é impressa de forma legível (tabela para listas, `chave: valor` para objetos); use `--json` antes do subcomando (ex: `nexus --json trigger-list`) para obter a resposta bruta da API em JSON, útil em scripts/CI.
+
 Veja exemplos completos de cada comando em [docs/sdk.md](../../docs/sdk.md).
 
 ## Publicação no GitHub

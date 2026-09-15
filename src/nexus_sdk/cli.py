@@ -51,6 +51,41 @@ class MeuBot(Automation):
 
 
 
+def _format_cell(value):
+    if value is None:
+        return '-'
+    if isinstance(value, bool):
+        return 'sim' if value else 'não'
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+    return str(value)
+
+
+def print_table(items):
+    if not items:
+        print('(nenhum resultado)')
+        return
+    columns = list(dict.fromkeys(key for item in items for key in item.keys()))
+    widths = {column: max(len(column), *(len(_format_cell(item.get(column))) for item in items)) for column in columns}
+    print('  '.join(column.upper().ljust(widths[column]) for column in columns))
+    print('  '.join('-' * widths[column] for column in columns))
+    for item in items:
+        print('  '.join(_format_cell(item.get(column)).ljust(widths[column]) for column in columns))
+
+
+def print_result(result, as_json=False):
+    """Pretty-print API responses; pass --json to get the raw payload instead."""
+    if as_json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif isinstance(result, list):
+        print_table(result)
+    elif isinstance(result, dict):
+        for key, value in result.items():
+            print(f'{key}: {_format_cell(value)}')
+    else:
+        print(result)
+
+
 def init_project(path):
     # Never merge a scaffold into an existing directory or overwrite user code.
     path.mkdir(parents=True, exist_ok=False)
@@ -275,7 +310,7 @@ def login(args):
         organization_id = matching[0]['organization_id']
         organization_name = matching[0]['organization_name']
     save_credentials(base_url, token, organization_id, organization_name)
-    print(json.dumps({'logged_in_as': profile.get('email'), 'api_url': base_url, 'organization': organization_name}, ensure_ascii=False, indent=2))
+    print_result({'logged_in_as': profile.get('email'), 'api_url': base_url, 'organization': organization_name}, args.json)
 
 
 def logout(args):
@@ -288,8 +323,8 @@ def whoami(args):
     if not credentials:
         raise RobotError('Você não está autenticado. Execute: nexus login')
     profile = api_request(credentials['api_base_url'], 'GET', '/auth/profile', token=credentials['token'])
-    print(json.dumps({'email': profile.get('email'), 'api_url': credentials['api_base_url'],
-                      'organization': credentials.get('organization_name')}, ensure_ascii=False, indent=2))
+    print_result({'email': profile.get('email'), 'api_url': credentials['api_base_url'],
+                  'organization': credentials.get('organization_name')}, args.json)
 
 
 def require_credentials():
@@ -332,7 +367,7 @@ def set_current(args):
     environment_id = resolve_environment_id(base_url, token, args.environment)
     result = api_request(base_url, 'POST', f'/automations/{automation_id}/versions/{version_id}/current', token=token,
                           headers={'X-Environment-ID': environment_id})
-    print(json.dumps({'automation_id': automation_id, 'version_id': version_id, 'environment': args.environment}, ensure_ascii=False, indent=2))
+    print_result({'automation_id': automation_id, 'version_id': version_id, 'environment': args.environment}, args.json)
 
 
 def promote(args):
@@ -348,7 +383,7 @@ def promote(args):
     from_environment_id = resolve_environment_id(base_url, token, args.from_environment)
     result = api_request(base_url, 'PUT', f'/automations/{automation_id}/deployments/{args.to}', token=token,
                           payload={'version_id': version_id}, headers={'X-Environment-ID': from_environment_id})
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print_result(result, args.json)
 
 
 def parse_kv_pairs(items):
@@ -374,7 +409,7 @@ def credential_create(args):
         payload['responsible_user_email'] = args.responsible_email
     result = api_request(base_url, 'POST', '/credentials', token=token, payload=payload,
                           headers={'X-Environment-ID': environment_id})
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print_result(result, args.json)
 
 
 def credential_list(args):
@@ -382,7 +417,7 @@ def credential_list(args):
     base_url, token = credentials['api_base_url'], credentials['token']
     environment_id = resolve_environment_id(base_url, token, args.environment)
     result = api_request(base_url, 'GET', '/credentials', token=token, headers={'X-Environment-ID': environment_id})
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print_result(result, args.json)
 
 
 def credential_bind(args):
@@ -393,7 +428,7 @@ def credential_bind(args):
     environment_id = resolve_environment_id(base_url, token, args.environment)
     result = api_request(base_url, 'PUT', f'/automations/{automation_id}/credential-bindings', token=token,
                           payload={'credential_ids': args.credential_id or []}, headers={'X-Environment-ID': environment_id})
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print_result(result, args.json)
 
 
 def trigger_create(args):
@@ -417,7 +452,7 @@ def trigger_create(args):
     }
     result = api_request(base_url, 'POST', f'/automations/{automation_id}/triggers', token=token, payload=payload,
                           headers={'X-Environment-ID': environment_id})
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print_result(result, args.json)
 
 
 def trigger_list(args):
@@ -428,7 +463,7 @@ def trigger_list(args):
     environment_id = resolve_environment_id(base_url, token, args.environment)
     result = api_request(base_url, 'GET', f'/automations/{automation_id}/triggers', token=token,
                           headers={'X-Environment-ID': environment_id})
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print_result(result, args.json)
 
 
 def queue_create(args):
@@ -438,7 +473,7 @@ def queue_create(args):
     payload = {'name': args.name, 'description': args.description}
     result = api_request(base_url, 'POST', '/queues', token=token, payload=payload,
                           headers={'X-Environment-ID': environment_id})
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print_result(result, args.json)
 
 
 def queue_bind(args):
@@ -450,7 +485,7 @@ def queue_bind(args):
     payload = {'input_queue_id': args.input_queue_id, 'output_queue_id': args.output_queue_id}
     result = api_request(base_url, 'PUT', f'/automations/{automation_id}/queues', token=token, payload=payload,
                           headers={'X-Environment-ID': environment_id})
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print_result(result, args.json)
 
 
 def queue_send(args):
@@ -460,7 +495,7 @@ def queue_send(args):
     payload = {'payload': parse_kv_pairs(args.data)}
     result = api_request(base_url, 'POST', f'/queues/{args.queue_id}/messages', token=token, payload=payload,
                           headers={'X-Environment-ID': environment_id})
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print_result(result, args.json)
 
 
 def execution_create(args):
@@ -474,7 +509,7 @@ def execution_create(args):
         payload['automation_id'] = require_automation_id(args.project.resolve())
     result = api_request(base_url, 'POST', '/executions', token=token, payload=payload,
                           headers={'X-Environment-ID': environment_id})
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print_result(result, args.json)
 
 
 def execution_list(args):
@@ -485,7 +520,7 @@ def execution_list(args):
     if args.status:
         query += f'&status={args.status}'
     result = api_request(base_url, 'GET', f'/executions{query}', token=token, headers={'X-Environment-ID': environment_id})
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print_result(result, args.json)
 
 
 def execution_logs(args):
@@ -497,7 +532,7 @@ def execution_logs(args):
         query += f'&level={args.level}'
     result = api_request(base_url, 'GET', f'/executions/{args.execution_id}/logs{query}', token=token,
                           headers={'X-Environment-ID': environment_id})
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print_result(result, args.json)
 
 
 def automation_create(args):
@@ -512,8 +547,7 @@ def automation_create(args):
     content = config_path.read_text(encoding='utf-8')
     # Must be inserted before any [table] header, otherwise TOML parses it as a nested key.
     config_path.write_text(f'automation_id = "{created["id"]}"\n' + content, encoding='utf-8')
-    print(json.dumps(created, ensure_ascii=False, indent=2))
-
+    print_result(created, args.json)
 
 def environment_set(args):
     credentials = require_credentials()
@@ -524,7 +558,7 @@ def environment_set(args):
     variables = [{'name': key, 'value': value} for key, value in parse_kv_pairs(args.set).items()]
     result = api_request(base_url, 'PUT', f'/automations/{automation_id}/environment', token=token,
                           payload={'variables': variables}, headers={'X-Environment-ID': environment_id})
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print_result(result, args.json)
 
 
 def environment_get(args):
@@ -535,7 +569,7 @@ def environment_get(args):
     environment_id = resolve_environment_id(base_url, token, args.environment)
     result = api_request(base_url, 'GET', f'/automations/{automation_id}/environment', token=token,
                           headers={'X-Environment-ID': environment_id})
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print_result(result, args.json)
 
 
 def webhook_create(args):
@@ -551,7 +585,7 @@ def webhook_create(args):
     }
     result = api_request(base_url, 'POST', f'/automations/{automation_id}/webhooks', token=token, payload=payload,
                           headers={'X-Environment-ID': environment_id})
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print_result(result, args.json)
 
 
 def webhook_list(args):
@@ -562,7 +596,7 @@ def webhook_list(args):
     environment_id = resolve_environment_id(base_url, token, args.environment)
     result = api_request(base_url, 'GET', f'/automations/{automation_id}/webhooks', token=token,
                           headers={'X-Environment-ID': environment_id})
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print_result(result, args.json)
 
 
 def publish_project(args):
@@ -600,12 +634,13 @@ def publish_project(args):
     )
     if args.publish:
         api_request(base_url, 'POST', f'/automations/{automation_id}/versions/{uploaded["id"]}/publish', token=token)
-    print(json.dumps({'automation_id': automation_id, 'version_id': uploaded['id'], 'version': version,
-                      'published': bool(args.publish)}, ensure_ascii=False, indent=2))
+    print_result({'automation_id': automation_id, 'version_id': uploaded['id'], 'version': version,
+                  'published': bool(args.publish)}, args.json)
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog='nexus', description='Crie e teste seus bots Nexus localmente.')
+    parser.add_argument('--json', action='store_true', help='Exibir a resposta bruta em JSON em vez de uma tabela/lista legível')
     sub = parser.add_subparsers(dest='command', required=True)
     init = sub.add_parser('init', help='Criar um projeto em uma nova pasta')
     init.add_argument('directory', type=Path)
@@ -764,12 +799,12 @@ def main(argv=None):
             return run_local(args)
         elif args.command == 'validate':
             report = validate_project(args.project)
-            print(json.dumps(report, ensure_ascii=False, indent=2))
+            print_result(report, args.json)
             return 1 if args.strict and report['warnings'] else 0
         elif args.command == 'inspect':
             script = entrypoint(args.project)
-            print(json.dumps({'package_path': script.relative_to(args.project.resolve()).as_posix(), 'entrypoint': script.name,
-                              'checksum': hashlib.sha256(script.read_bytes()).hexdigest()}, indent=2))
+            print_result({'package_path': script.relative_to(args.project.resolve()).as_posix(), 'entrypoint': script.name,
+                          'checksum': hashlib.sha256(script.read_bytes()).hexdigest()}, args.json)
         elif args.command == 'login':
             login(args)
         elif args.command == 'logout':
