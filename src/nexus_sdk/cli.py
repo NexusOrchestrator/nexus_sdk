@@ -292,6 +292,279 @@ def whoami(args):
                       'organization': credentials.get('organization_name')}, ensure_ascii=False, indent=2))
 
 
+def require_credentials():
+    credentials = load_credentials()
+    if not credentials:
+        raise RobotError('Você não está autenticado. Execute: nexus login')
+    return credentials
+
+
+def require_automation_id(root: Path):
+    config = load_project_config(root)
+    automation_id = config.get('automation_id')
+    if not automation_id:
+        raise RobotError('Projeto ainda não foi publicado. Execute: nexus publish')
+    return automation_id
+
+
+def resolve_environment_id(base_url, token, key):
+    environments = api_request(base_url, 'GET', '/environments', token=token)
+    for item in environments or []:
+        if item.get('key') == key:
+            return item['id']
+    raise RobotError(f'Ambiente {key} não encontrado ou não permitido para o seu perfil.')
+
+
+def resolve_version_id(base_url, token, automation_id, version):
+    versions = api_request(base_url, 'GET', f'/automations/{automation_id}/versions', token=token)
+    for item in versions or []:
+        if item.get('version') == version and item.get('is_published'):
+            return item['id']
+    raise RobotError(f'Vers\u00e3o publicada {version} n\u00e3o encontrada para esta automa\u00e7\u00e3o.')
+
+
+def set_current(args):
+    credentials = require_credentials()
+    root = args.project.resolve()
+    automation_id = require_automation_id(root)
+    base_url, token = credentials['api_base_url'], credentials['token']
+    version_id = args.version_id or resolve_version_id(base_url, token, automation_id, args.version or load_project_config(root).get('version'))
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    result = api_request(base_url, 'POST', f'/automations/{automation_id}/versions/{version_id}/current', token=token,
+                          headers={'X-Environment-ID': environment_id})
+    print(json.dumps({'automation_id': automation_id, 'version_id': version_id, 'environment': args.environment}, ensure_ascii=False, indent=2))
+
+
+def promote(args):
+    credentials = require_credentials()
+    root = args.project.resolve()
+    automation_id = require_automation_id(root)
+    base_url, token = credentials['api_base_url'], credentials['token']
+    version_id = None
+    if args.version_id:
+        version_id = args.version_id
+    elif args.version:
+        version_id = resolve_version_id(base_url, token, automation_id, args.version)
+    from_environment_id = resolve_environment_id(base_url, token, args.from_environment)
+    result = api_request(base_url, 'PUT', f'/automations/{automation_id}/deployments/{args.to}', token=token,
+                          payload={'version_id': version_id}, headers={'X-Environment-ID': from_environment_id})
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def parse_kv_pairs(items):
+    result = {}
+    for item in items or []:
+        key, sep, value = item.partition('=')
+        if not sep or not key.strip():
+            raise RobotError(f'Formato inválido "{item}", use CHAVE=VALOR.')
+        result[key.strip()] = value
+    return result
+
+
+def credential_create(args):
+    credentials = require_credentials()
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    payload = {'name': args.name, 'value': parse_kv_pairs(args.data)}
+    if args.expires_at:
+        payload['expires_at'] = args.expires_at
+    if args.auto_rotate_days:
+        payload['auto_rotate_days'] = args.auto_rotate_days
+    if args.responsible_email:
+        payload['responsible_user_email'] = args.responsible_email
+    result = api_request(base_url, 'POST', '/credentials', token=token, payload=payload,
+                          headers={'X-Environment-ID': environment_id})
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def credential_list(args):
+    credentials = require_credentials()
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    result = api_request(base_url, 'GET', '/credentials', token=token, headers={'X-Environment-ID': environment_id})
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def credential_bind(args):
+    credentials = require_credentials()
+    root = args.project.resolve()
+    automation_id = require_automation_id(root)
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    result = api_request(base_url, 'PUT', f'/automations/{automation_id}/credential-bindings', token=token,
+                          payload={'credential_ids': args.credential_id or []}, headers={'X-Environment-ID': environment_id})
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def trigger_create(args):
+    credentials = require_credentials()
+    root = args.project.resolve()
+    automation_id = require_automation_id(root)
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    if args.version_id:
+        version_policy, version_id = 'PINNED', args.version_id
+    elif args.version:
+        version_policy, version_id = 'PINNED', resolve_version_id(base_url, token, automation_id, args.version)
+    else:
+        version_policy, version_id = 'CURRENT', None
+    payload = {
+        'name': args.name, 'type': args.type, 'version_policy': version_policy, 'version_id': version_id,
+        'cron_expression': args.cron, 'timezone': args.timezone,
+        'inputs': parse_kv_pairs(args.input), 'required_params': args.required_param or [],
+        'timeout_seconds': args.timeout, 'credential_ids': args.credential_id or [],
+        'require_auth': not args.no_require_auth, 'webhook_secret': args.webhook_secret,
+    }
+    result = api_request(base_url, 'POST', f'/automations/{automation_id}/triggers', token=token, payload=payload,
+                          headers={'X-Environment-ID': environment_id})
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def trigger_list(args):
+    credentials = require_credentials()
+    root = args.project.resolve()
+    automation_id = require_automation_id(root)
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    result = api_request(base_url, 'GET', f'/automations/{automation_id}/triggers', token=token,
+                          headers={'X-Environment-ID': environment_id})
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def queue_create(args):
+    credentials = require_credentials()
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    payload = {'name': args.name, 'description': args.description}
+    result = api_request(base_url, 'POST', '/queues', token=token, payload=payload,
+                          headers={'X-Environment-ID': environment_id})
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def queue_bind(args):
+    credentials = require_credentials()
+    root = args.project.resolve()
+    automation_id = require_automation_id(root)
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    payload = {'input_queue_id': args.input_queue_id, 'output_queue_id': args.output_queue_id}
+    result = api_request(base_url, 'PUT', f'/automations/{automation_id}/queues', token=token, payload=payload,
+                          headers={'X-Environment-ID': environment_id})
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def queue_send(args):
+    credentials = require_credentials()
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    payload = {'payload': parse_kv_pairs(args.data)}
+    result = api_request(base_url, 'POST', f'/queues/{args.queue_id}/messages', token=token, payload=payload,
+                          headers={'X-Environment-ID': environment_id})
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def execution_create(args):
+    credentials = require_credentials()
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    payload = {'request_key': args.request_key, 'inputs': parse_kv_pairs(args.input), 'timeout_seconds': args.timeout}
+    if args.version_id:
+        payload['version_id'] = args.version_id
+    else:
+        payload['automation_id'] = require_automation_id(args.project.resolve())
+    result = api_request(base_url, 'POST', '/executions', token=token, payload=payload,
+                          headers={'X-Environment-ID': environment_id})
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def execution_list(args):
+    credentials = require_credentials()
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    query = f'?limit={args.limit}'
+    if args.status:
+        query += f'&status={args.status}'
+    result = api_request(base_url, 'GET', f'/executions{query}', token=token, headers={'X-Environment-ID': environment_id})
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def execution_logs(args):
+    credentials = require_credentials()
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    query = f'?limit={args.limit}'
+    if args.level:
+        query += f'&level={args.level}'
+    result = api_request(base_url, 'GET', f'/executions/{args.execution_id}/logs{query}', token=token,
+                          headers={'X-Environment-ID': environment_id})
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def automation_create(args):
+    credentials = require_credentials()
+    root = args.project.resolve()
+    config = load_project_config(root)
+    if config.get('automation_id'):
+        raise RobotError('Este projeto já possui um automation_id em nexus.toml.')
+    base_url, token = credentials['api_base_url'], credentials['token']
+    created = api_request(base_url, 'POST', '/automations', token=token, payload={'name': args.name or config.get('name', root.name)})
+    config_path = root / 'nexus.toml'
+    content = config_path.read_text(encoding='utf-8')
+    # Must be inserted before any [table] header, otherwise TOML parses it as a nested key.
+    config_path.write_text(f'automation_id = "{created["id"]}"\n' + content, encoding='utf-8')
+    print(json.dumps(created, ensure_ascii=False, indent=2))
+
+
+def environment_set(args):
+    credentials = require_credentials()
+    root = args.project.resolve()
+    automation_id = require_automation_id(root)
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    variables = [{'name': key, 'value': value} for key, value in parse_kv_pairs(args.set).items()]
+    result = api_request(base_url, 'PUT', f'/automations/{automation_id}/environment', token=token,
+                          payload={'variables': variables}, headers={'X-Environment-ID': environment_id})
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def environment_get(args):
+    credentials = require_credentials()
+    root = args.project.resolve()
+    automation_id = require_automation_id(root)
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    result = api_request(base_url, 'GET', f'/automations/{automation_id}/environment', token=token,
+                          headers={'X-Environment-ID': environment_id})
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def webhook_create(args):
+    credentials = require_credentials()
+    root = args.project.resolve()
+    automation_id = require_automation_id(root)
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    payload = {
+        'name': args.name, 'url': args.url, 'method': args.method,
+        'trigger_on': args.trigger_on or ['SUCCEEDED', 'FAILED'],
+        'credential_id': args.credential_id, 'is_active': not args.inactive,
+    }
+    result = api_request(base_url, 'POST', f'/automations/{automation_id}/webhooks', token=token, payload=payload,
+                          headers={'X-Environment-ID': environment_id})
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def webhook_list(args):
+    credentials = require_credentials()
+    root = args.project.resolve()
+    automation_id = require_automation_id(root)
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    result = api_request(base_url, 'GET', f'/automations/{automation_id}/webhooks', token=token,
+                          headers={'X-Environment-ID': environment_id})
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
 def publish_project(args):
     credentials = load_credentials()
     if not credentials:
@@ -309,7 +582,8 @@ def publish_project(args):
         automation_id = created['id']
         config_path = root / 'nexus.toml'
         content = config_path.read_text(encoding='utf-8')
-        config_path.write_text(content + f'\nautomation_id = "{automation_id}"\n', encoding='utf-8')
+        # Must be inserted before any [table] header, otherwise TOML parses it as a nested key.
+        config_path.write_text(f'automation_id = "{automation_id}"\n' + content, encoding='utf-8')
         print(f'Automação criada: {automation_id}')
     script = entrypoint(root)
     name = safe_zip_name(config.get('name', root.name))
@@ -366,6 +640,120 @@ def main(argv=None):
     publish.add_argument('--project', type=Path, default=Path('.'))
     publish.add_argument('--version', help='Atualizar nexus.toml e publicar com esta versão')
     publish.add_argument('--publish', action='store_true', help='Publicar a versão imediatamente após o envio')
+    set_current_parser = sub.add_parser('set-current', help='Definir a versão ativa da automação em um ambiente')
+    set_current_parser.add_argument('--project', type=Path, default=Path('.'))
+    set_current_parser.add_argument('--environment', default='DEVELOPMENT', choices=['DEVELOPMENT', 'STAGING', 'PRODUCTION'], help='Ambiente onde a versão será definida como atual')
+    set_current_group = set_current_parser.add_mutually_exclusive_group(required=True)
+    set_current_group.add_argument('--version', help='Versão publicada (ex: 1.0.1)')
+    set_current_group.add_argument('--version-id', help='ID da versão publicada')
+    promote_parser = sub.add_parser('promote', help='Promover uma versão para o próximo ambiente do pipeline')
+    promote_parser.add_argument('--project', type=Path, default=Path('.'))
+    promote_parser.add_argument('--from', dest='from_environment', default='DEVELOPMENT', choices=['DEVELOPMENT', 'STAGING'], help='Ambiente de origem da promoção')
+    promote_parser.add_argument('--to', required=True, choices=['STAGING', 'PRODUCTION'], help='Ambiente de destino da promoção')
+    promote_group = promote_parser.add_mutually_exclusive_group()
+    promote_group.add_argument('--version', help='Versão publicada (ex: 1.0.1)')
+    promote_group.add_argument('--version-id', help='ID da versão publicada')
+
+    environment_choices = ['DEVELOPMENT', 'STAGING', 'PRODUCTION']
+
+    automation_create_parser = sub.add_parser('automation-create', help='Criar a automação no Nexus sem publicar nenhuma versão')
+    automation_create_parser.add_argument('--project', type=Path, default=Path('.'))
+    automation_create_parser.add_argument('--name', help='Nome da automação (padrão: nome do projeto)')
+
+    credential_create_parser = sub.add_parser('credential-create', help='Criar uma credencial no ambiente selecionado')
+    credential_create_parser.add_argument('--name', required=True)
+    credential_create_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+    credential_create_parser.add_argument('--data', action='append', metavar='CHAVE=VALOR', required=True, help='Par chave=valor; pode repetir')
+    credential_create_parser.add_argument('--expires-at', help='Data ISO 8601 de expiração')
+    credential_create_parser.add_argument('--auto-rotate-days', type=int)
+    credential_create_parser.add_argument('--responsible-email', help='E-mail do responsável pela credencial')
+
+    credential_list_parser = sub.add_parser('credential-list', help='Listar credenciais do ambiente')
+    credential_list_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+
+    credential_bind_parser = sub.add_parser('credential-bind', help='Associar credenciais à automação do projeto')
+    credential_bind_parser.add_argument('--project', type=Path, default=Path('.'))
+    credential_bind_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+    credential_bind_parser.add_argument('--credential-id', action='append', required=True, help='ID da credencial; pode repetir')
+
+    trigger_create_parser = sub.add_parser('trigger-create', help='Criar um disparador (agendamento ou webhook)')
+    trigger_create_parser.add_argument('--project', type=Path, default=Path('.'))
+    trigger_create_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+    trigger_create_parser.add_argument('--name', required=True)
+    trigger_create_parser.add_argument('--type', required=True, choices=['SCHEDULE', 'WEBHOOK'])
+    trigger_create_parser.add_argument('--cron', help='Expressão cron; obrigatório para type=SCHEDULE')
+    trigger_create_parser.add_argument('--timezone', default='UTC')
+    trigger_create_parser.add_argument('--version', help='Versão publicada fixa (padrão: acompanhar a versão atual do ambiente)')
+    trigger_create_parser.add_argument('--version-id', help='ID da versão publicada fixa')
+    trigger_create_parser.add_argument('--input', action='append', metavar='CHAVE=VALOR', help='Parâmetro fixo de entrada; pode repetir')
+    trigger_create_parser.add_argument('--required-param', action='append', help='Nome de parâmetro obrigatório no webhook; pode repetir')
+    trigger_create_parser.add_argument('--timeout', type=int, default=300)
+    trigger_create_parser.add_argument('--credential-id', action='append', help='ID de credencial vinculada; pode repetir')
+    trigger_create_parser.add_argument('--no-require-auth', action='store_true', help='Desativar autenticação do webhook')
+    trigger_create_parser.add_argument('--webhook-secret', help='Segredo do webhook (gerado automaticamente se omitido)')
+
+    trigger_list_parser = sub.add_parser('trigger-list', help='Listar disparadores da automação do projeto')
+    trigger_list_parser.add_argument('--project', type=Path, default=Path('.'))
+    trigger_list_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+
+    queue_create_parser = sub.add_parser('queue-create', help='Criar uma fila no ambiente selecionado')
+    queue_create_parser.add_argument('--name', required=True)
+    queue_create_parser.add_argument('--description')
+    queue_create_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+
+    queue_bind_parser = sub.add_parser('queue-bind', help='Associar filas de entrada/saída à automação do projeto')
+    queue_bind_parser.add_argument('--project', type=Path, default=Path('.'))
+    queue_bind_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+    queue_bind_parser.add_argument('--input-queue-id')
+    queue_bind_parser.add_argument('--output-queue-id')
+
+    queue_send_parser = sub.add_parser('queue-send', help='Publicar uma mensagem em uma fila')
+    queue_send_parser.add_argument('--queue-id', required=True)
+    queue_send_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+    queue_send_parser.add_argument('--data', action='append', metavar='CHAVE=VALOR', required=True, help='Par chave=valor; pode repetir')
+
+    execution_create_parser = sub.add_parser('execution-create', help='Disparar uma nova execução')
+    execution_create_parser.add_argument('--project', type=Path, default=Path('.'))
+    execution_create_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+    execution_create_parser.add_argument('--version-id', help='ID de versão específica (padrão: versão atual do ambiente)')
+    execution_create_parser.add_argument('--request-key', required=True, help='Chave de idempotência da requisição')
+    execution_create_parser.add_argument('--input', action='append', metavar='CHAVE=VALOR', help='Parâmetro de entrada; pode repetir')
+    execution_create_parser.add_argument('--timeout', type=int, default=300)
+
+    execution_list_parser = sub.add_parser('execution-list', help='Listar execuções do ambiente')
+    execution_list_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+    execution_list_parser.add_argument('--status')
+    execution_list_parser.add_argument('--limit', type=int, default=50)
+
+    execution_logs_parser = sub.add_parser('execution-logs', help='Ver logs de uma execução')
+    execution_logs_parser.add_argument('--execution-id', required=True)
+    execution_logs_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+    execution_logs_parser.add_argument('--level')
+    execution_logs_parser.add_argument('--limit', type=int, default=50)
+
+    environment_set_parser = sub.add_parser('environment-set', help='Definir variáveis de ambiente (ENV) da automação')
+    environment_set_parser.add_argument('--project', type=Path, default=Path('.'))
+    environment_set_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+    environment_set_parser.add_argument('--set', action='append', metavar='NOME=VALOR', required=True, dest='set', help='Par nome=valor; pode repetir. Substitui todas as variáveis existentes.')
+
+    environment_get_parser = sub.add_parser('environment-get', help='Ver variáveis de ambiente (ENV) da automação')
+    environment_get_parser.add_argument('--project', type=Path, default=Path('.'))
+    environment_get_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+
+    webhook_create_parser = sub.add_parser('webhook-create', help='Criar uma ação de saída (webhook de execução)')
+    webhook_create_parser.add_argument('--project', type=Path, default=Path('.'))
+    webhook_create_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+    webhook_create_parser.add_argument('--name', required=True)
+    webhook_create_parser.add_argument('--url', required=True)
+    webhook_create_parser.add_argument('--method', default='POST', choices=['POST', 'PUT', 'PATCH', 'GET'])
+    webhook_create_parser.add_argument('--trigger-on', action='append', choices=['SUCCEEDED', 'FAILED', 'TIMED_OUT', 'CANCELLED'], help='Status que dispara o webhook; pode repetir (padrão: SUCCEEDED e FAILED)')
+    webhook_create_parser.add_argument('--credential-id', help='Credencial usada para autenticar a chamada de saída')
+    webhook_create_parser.add_argument('--inactive', action='store_true', help='Criar desativado')
+
+    webhook_list_parser = sub.add_parser('webhook-list', help='Listar ações de saída (webhooks) da automação')
+    webhook_list_parser.add_argument('--project', type=Path, default=Path('.'))
+    webhook_list_parser.add_argument('--environment', default='DEVELOPMENT', choices=environment_choices)
+
     args = parser.parse_args(argv)
     try:
         if args.command == 'init':
@@ -390,6 +778,42 @@ def main(argv=None):
             whoami(args)
         elif args.command == 'publish':
             publish_project(args)
+        elif args.command == 'set-current':
+            set_current(args)
+        elif args.command == 'promote':
+            promote(args)
+        elif args.command == 'credential-create':
+            credential_create(args)
+        elif args.command == 'credential-list':
+            credential_list(args)
+        elif args.command == 'credential-bind':
+            credential_bind(args)
+        elif args.command == 'trigger-create':
+            trigger_create(args)
+        elif args.command == 'trigger-list':
+            trigger_list(args)
+        elif args.command == 'queue-create':
+            queue_create(args)
+        elif args.command == 'queue-bind':
+            queue_bind(args)
+        elif args.command == 'queue-send':
+            queue_send(args)
+        elif args.command == 'execution-create':
+            execution_create(args)
+        elif args.command == 'execution-list':
+            execution_list(args)
+        elif args.command == 'execution-logs':
+            execution_logs(args)
+        elif args.command == 'automation-create':
+            automation_create(args)
+        elif args.command == 'environment-set':
+            environment_set(args)
+        elif args.command == 'environment-get':
+            environment_get(args)
+        elif args.command == 'webhook-create':
+            webhook_create(args)
+        elif args.command == 'webhook-list':
+            webhook_list(args)
         else:
             package_project(args)
         return 0

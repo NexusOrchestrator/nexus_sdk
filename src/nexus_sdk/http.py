@@ -7,13 +7,15 @@ import urllib.request
 from .errors import RobotError
 
 
-def api_request(base_url, method, path, token=None, payload=None, timeout=30):
+def api_request(base_url, method, path, token=None, payload=None, headers=None, timeout=30):
     url = f'{base_url.rstrip("/")}{path}'
     data = json.dumps(payload).encode('utf-8') if payload is not None else None
-    headers = {'Content-Type': 'application/json'}
+    request_headers = {'Content-Type': 'application/json'}
     if token:
-        headers['Authorization'] = f'Bearer {token}'
-    request = urllib.request.Request(url, data=data, headers=headers, method=method)
+        request_headers['Authorization'] = f'Bearer {token}'
+    if headers:
+        request_headers.update(headers)
+    request = urllib.request.Request(url, data=data, headers=request_headers, method=method)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             body = response.read()
