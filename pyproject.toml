@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nexus-sdk"
-version = "0.4.6"
+version = "0.4.7"
 description = "Framework Python para bots do Nexus"
 requires-python = ">=3.12"
 dependencies = []
@@ -14,3 +14,6 @@ nexus = "nexus_sdk.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+nexus_sdk = ["py.typed"]

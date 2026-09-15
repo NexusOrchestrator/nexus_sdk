@@ -15,7 +15,7 @@ python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git
 Para fixar uma versão específica:
 
 ```bash
-python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git@v0.4.6
+python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git@v0.4.7
 ```
 
 Para desenvolvimento local dentro do monorepo:
@@ -152,6 +152,8 @@ Desenvolvimento local (sem conta):
 nexus init meu-bot                              # cria a estrutura inicial do projeto
 nexus venv                                       # cria o ambiente virtual (--install-requirements para libs extras)
 nexus validate --strict                          # valida nexus.toml e o entrypoint antes de publicar
+nexus doctor                                     # diagnostica ambiente local, projeto e autenticação
+nexus bump --part minor                          # incrementa a versão em nexus.toml (major/minor/patch)
 nexus run --inputs inputs.json                   # executa o bot localmente
 nexus package --version 1.0.0                    # gera dist/meu-bot-1.0.0.zip
 ```
@@ -230,10 +232,10 @@ Para publicar uma nova versão:
 cd apps/sdk
 git status
 git add .
-git commit -m "Release SDK 0.4.6"
-git tag v0.4.6
+git commit -m "Release SDK 0.4.7"
+git tag v0.4.7
 git push origin main
-git push origin v0.4.6
+git push origin v0.4.7
 ```
 
 Atualize a versão em:
