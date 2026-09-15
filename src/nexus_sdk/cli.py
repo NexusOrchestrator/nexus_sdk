@@ -1,8 +1,9 @@
 import argparse
 import hashlib
+import io
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import shutil
 import subprocess
@@ -13,9 +14,9 @@ import zipfile
 from .core import RobotError, read_object, write_object
 from .project import validate_project
 from .credentials import save_credentials, load_credentials, clear_credentials, set_default_environment
-from .http import api_request, api_upload
+from .http import api_request, api_upload, api_download
 
-SDK_VERSION = '0.4.4'
+SDK_VERSION = '0.4.5'
 SDK_RUNTIME_MIN = '0.4.0'
 SDK_REQUIREMENT = f'nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v{SDK_VERSION}.zip'
 VERSION_PATTERN = re.compile(r'\d+\.\d+(?:\.\d+)?')
@@ -573,6 +574,36 @@ def automation_list(args):
     result = api_request(base_url, 'GET', '/automations', token=token, headers={'X-Environment-ID': environment_id})
     print_result(result, args.json)
 
+def pull(args):
+    credentials = require_credentials()
+    root = args.project.resolve()
+    automation_id = args.automation_id or require_automation_id(root)
+    base_url, token = credentials['api_base_url'], credentials['token']
+    if args.version_id:
+        version_id = args.version_id
+    else:
+        version_id = resolve_version_id(base_url, token, automation_id, args.version)
+    content = api_download(base_url, f'/automations/{automation_id}/versions/{version_id}/download', token=token)
+
+    if args.zip_only:
+        output_path = Path(args.output) if args.output else root / f'{automation_id}-{version_id}.zip'
+        output_path.write_bytes(content)
+        print_result({'automation_id': automation_id, 'version_id': version_id, 'saved_to': str(output_path)}, args.json)
+        return
+
+    target = Path(args.output).resolve() if args.output else root
+    target.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(io.BytesIO(content)) as archive:
+        for item in archive.infolist():
+            member_path = PurePosixPath(item.filename)
+            if member_path.is_absolute() or '..' in member_path.parts:
+                raise RobotError('Pacote contém caminhos de arquivo inseguros.')
+            destination = target / member_path
+            if destination.exists() and not item.is_dir() and not args.force:
+                raise RobotError(f'Arquivo já existe: {destination}. Use --force para sobrescrever.')
+        archive.extractall(target)
+    print_result({'automation_id': automation_id, 'version_id': version_id, 'extracted_to': str(target)}, args.json)
+
 def environment_set(args):
     credentials = require_credentials()
     root = args.project.resolve()
@@ -727,6 +758,16 @@ def main(argv=None):
     automation_list_parser = sub.add_parser('automation-list', help='Listar automações do ambiente')
     automation_list_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
 
+    pull_parser = sub.add_parser('pull', help='Baixar (e extrair) uma versão publicada da automação para o projeto local')
+    pull_parser.add_argument('--project', type=Path, default=Path('.'), help='Diretório do projeto (usado para ler o automation_id em nexus.toml, salvo se --automation-id for informado)')
+    pull_parser.add_argument('--automation-id', help='ID da automação (padrão: automation_id do nexus.toml do projeto)')
+    pull_version_group = pull_parser.add_mutually_exclusive_group(required=True)
+    pull_version_group.add_argument('--version', help='Versão publicada a baixar (ex: 1.0.1)')
+    pull_version_group.add_argument('--version-id', help='ID da versão a baixar')
+    pull_parser.add_argument('--output', help='Pasta de destino (ou caminho do .zip com --zip-only); padrão: --project')
+    pull_parser.add_argument('--zip-only', action='store_true', help='Salvar apenas o .zip sem extrair')
+    pull_parser.add_argument('--force', action='store_true', help='Sobrescrever arquivos existentes ao extrair')
+
     credential_create_parser = sub.add_parser('credential-create', help='Criar uma credencial no ambiente selecionado')
     credential_create_parser.add_argument('--name', required=True)
     credential_create_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
@@ -877,6 +918,8 @@ def main(argv=None):
             automation_create(args)
         elif args.command == 'automation-list':
             automation_list(args)
+        elif args.command == 'pull':
+            pull(args)
         elif args.command == 'environment-set':
             environment_set(args)
         elif args.command == 'environment-get':

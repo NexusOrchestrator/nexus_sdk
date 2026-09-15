@@ -31,6 +31,27 @@ def api_request(base_url, method, path, token=None, payload=None, headers=None, 
         raise RobotError(f'Não foi possível conectar em {base_url}: {error.reason}') from error
 
 
+def api_download(base_url, path, token=None, timeout=60):
+    """GET a binary response (e.g. a version package ZIP) without attempting JSON parsing."""
+    url = f'{base_url.rstrip("/")}{path}'
+    request_headers = {}
+    if token:
+        request_headers['Authorization'] = f'Bearer {token}'
+    request = urllib.request.Request(url, headers=request_headers, method='GET')
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return response.read()
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode('utf-8', errors='replace')
+        try:
+            detail = json.loads(detail).get('detail', detail)
+        except ValueError:
+            pass
+        raise RobotError(f'Falha no download ({error.code}): {detail}') from error
+    except urllib.error.URLError as error:
+        raise RobotError(f'Não foi possível conectar em {base_url}: {error.reason}') from error
+
+
 def api_upload(base_url, path, token, fields, file_field, file_name, file_bytes, timeout=120):
     """Multipart/form-data POST built with only the standard library."""
     boundary = uuid.uuid4().hex
