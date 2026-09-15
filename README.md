@@ -15,7 +15,7 @@ python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git
 Para fixar uma versão específica:
 
 ```bash
-python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git@v0.4.5
+python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git@v0.4.6
 ```
 
 Para desenvolvimento local dentro do monorepo:
@@ -166,24 +166,46 @@ nexus environment-use STAGING                               # define o ambiente 
 nexus publish --version 1.0.1 --publish                     # empacota, envia e publica uma nova versão
 nexus automation-create --name "Meu Bot"                    # cria a automação sem publicar nenhuma versão
 nexus automation-list --environment DEVELOPMENT              # lista as automações do ambiente
+nexus automation-get --automation-id <id>                    # ver detalhes de uma automação
+nexus automation-update --automation-id <id> --name "Novo nome"  # atualiza a automação (substitui todos os campos)
+nexus automation-archive --automation-id <id>                # arquiva a automação
+nexus automation-restore --automation-id <id>                # restaura uma automação arquivada
+nexus automation-delete --automation-id <id>                 # remove a automação
 nexus pull --automation-id <id> --version 1.0.1 --output ./meu-bot   # baixa e extrai uma versão publicada
 nexus set-current --version 1.0.1 --environment DEVELOPMENT  # define a versão ativa de um ambiente
 nexus promote --from DEVELOPMENT --to STAGING --version 1.0.1  # promove uma versão para o próximo ambiente
+nexus deployment-list                                         # mostra a versão implantada em cada ambiente
+nexus deployment-history                                      # histórico de promoções/implantações
+nexus deployment-rollback --event-id <id>                     # reverte uma promoção usando o histórico
+nexus environment-list                                        # lista os ambientes disponíveis para o seu perfil
 nexus credential-create --name "API Key" --data CHAVE=valor  # cria uma credencial no ambiente selecionado
+nexus credential-update --credential-id <id> --name "API Key" --data CHAVE=novo_valor  # atualiza uma credencial
+nexus credential-delete --credential-id <id>                 # remove uma credencial
 nexus credential-list --environment DEVELOPMENT              # lista credenciais do ambiente
 nexus credential-bind --credential-id <id> --credential-id <id2>  # associa credenciais à automação do projeto
 nexus environment-set --set CHAVE=valor --set OUTRA=valor2   # define variáveis de ambiente (ENV) da automação
 nexus environment-get                                        # mostra as variáveis de ambiente (ENV) da automação
 nexus trigger-create --name "Diário" --type SCHEDULE --cron "0 9 * * *"  # cria um disparador de agendamento
 nexus trigger-list                                           # lista disparadores da automação do projeto
+nexus trigger-update --trigger-id <id> --name "Diário" --type SCHEDULE --cron "0 10 * * *"  # atualiza um disparador
+nexus trigger-toggle --trigger-id <id>                       # ativa/pausa um disparador
+nexus trigger-delete --trigger-id <id>                       # remove um disparador
 nexus queue-create --name "fila-entrada"                     # cria uma fila no ambiente selecionado
+nexus queue-get --queue-id <id>                              # ver detalhes de uma fila
+nexus queue-update --queue-id <id> --name "fila-entrada-v2"  # atualiza nome/descrição de uma fila
+nexus queue-messages --queue-id <id> --status FAILED         # lista mensagens de uma fila
+nexus queue-delete --queue-id <id>                           # remove uma fila (sem vínculos/histórico)
 nexus queue-bind --input-queue-id <id> --output-queue-id <id2>  # associa filas de entrada/saída à automação
 nexus queue-send --queue-id <id> --data pedido=123           # publica uma mensagem em uma fila
 nexus webhook-create --name "Notificar" --url https://exemplo.com/hook --trigger-on SUCCEEDED  # ação de saída
 nexus webhook-list                                           # lista as ações de saída (webhooks) da automação
+nexus webhook-update --webhook-id <id> --name "Notificar" --url https://exemplo.com/hook2  # atualiza um webhook
+nexus webhook-delete --webhook-id <id>                       # remove um webhook
 nexus execution-create --request-key "chave-1" --input cidade=SP  # dispara uma nova execução
 nexus execution-list --limit 20 --status FAILED               # lista execuções do ambiente
 nexus execution-logs --execution-id <id> --limit 100          # mostra os logs de uma execução
+nexus execution-cancel --execution-id <id>                    # cancela uma execução em fila ou em andamento
+nexus execution-retry --execution-id <id>                     # repete uma execução criando uma nova a partir dela
 ```
 
 Por padrão a saída é impressa de forma legível (tabela para listas, incluindo respostas paginadas com `items`/`total`; `chave: valor` para objetos); use `--json` antes do subcomando (ex: `nexus --json trigger-list`) para obter a resposta bruta da API em JSON, útil em scripts/CI.
@@ -208,10 +230,10 @@ Para publicar uma nova versão:
 cd apps/sdk
 git status
 git add .
-git commit -m "Release SDK 0.4.5"
-git tag v0.4.5
+git commit -m "Release SDK 0.4.6"
+git tag v0.4.6
 git push origin main
-git push origin v0.4.5
+git push origin v0.4.6
 ```
 
 Atualize a versão em:
