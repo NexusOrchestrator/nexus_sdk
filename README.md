@@ -15,7 +15,7 @@ python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git
 Para fixar uma versão específica:
 
 ```bash
-python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git@v0.4.3
+python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git@v0.4.4
 ```
 
 Para desenvolvimento local dentro do monorepo:
@@ -164,6 +164,7 @@ nexus whoami
 nexus logout
 nexus publish
 nexus automation-create
+nexus automation-list
 nexus set-current
 nexus promote
 nexus credential-create
@@ -184,7 +185,7 @@ nexus execution-list
 nexus execution-logs
 ```
 
-Por padrão a saída é impressa de forma legível (tabela para listas, `chave: valor` para objetos); use `--json` antes do subcomando (ex: `nexus --json trigger-list`) para obter a resposta bruta da API em JSON, útil em scripts/CI.
+Por padrão a saída é impressa de forma legível (tabela para listas, incluindo respostas paginadas com `items`/`total`; `chave: valor` para objetos); use `--json` antes do subcomando (ex: `nexus --json trigger-list`) para obter a resposta bruta da API em JSON, útil em scripts/CI.
 
 Use `nexus environment-use STAGING` para definir o ambiente padrão usado quando `--environment` não é informado nos demais comandos; o comando valida se seu token tem acesso ao ambiente (consultando `/environments`) antes de salvar a preferência localmente.
 

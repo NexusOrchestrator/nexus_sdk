@@ -15,7 +15,7 @@ from .project import validate_project
 from .credentials import save_credentials, load_credentials, clear_credentials, set_default_environment
 from .http import api_request, api_upload
 
-SDK_VERSION = '0.4.3'
+SDK_VERSION = '0.4.4'
 SDK_RUNTIME_MIN = '0.4.0'
 SDK_REQUIREMENT = f'nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v{SDK_VERSION}.zip'
 VERSION_PATTERN = re.compile(r'\d+\.\d+(?:\.\d+)?')
@@ -79,6 +79,14 @@ def print_result(result, as_json=False):
         print(json.dumps(result, ensure_ascii=False, indent=2))
     elif isinstance(result, list):
         print_table(result)
+    elif isinstance(result, dict) and isinstance(result.get('items'), list):
+        # Paginated responses ({items, total, limit, offset}); render items as a table and metadata below.
+        print_table(result['items'])
+        meta = {key: value for key, value in result.items() if key != 'items'}
+        if meta:
+            print()
+            for key, value in meta.items():
+                print(f'{key}: {_format_cell(value)}')
     elif isinstance(result, dict):
         for key, value in result.items():
             print(f'{key}: {_format_cell(value)}')
@@ -558,6 +566,13 @@ def automation_create(args):
     config_path.write_text(f'automation_id = "{created["id"]}"\n' + content, encoding='utf-8')
     print_result(created, args.json)
 
+def automation_list(args):
+    credentials = require_credentials()
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    result = api_request(base_url, 'GET', '/automations', token=token, headers={'X-Environment-ID': environment_id})
+    print_result(result, args.json)
+
 def environment_set(args):
     credentials = require_credentials()
     root = args.project.resolve()
@@ -709,6 +724,9 @@ def main(argv=None):
     automation_create_parser.add_argument('--project', type=Path, default=Path('.'))
     automation_create_parser.add_argument('--name', help='Nome da automação (padrão: nome do projeto)')
 
+    automation_list_parser = sub.add_parser('automation-list', help='Listar automações do ambiente')
+    automation_list_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
+
     credential_create_parser = sub.add_parser('credential-create', help='Criar uma credencial no ambiente selecionado')
     credential_create_parser.add_argument('--name', required=True)
     credential_create_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
@@ -857,6 +875,8 @@ def main(argv=None):
             environment_use(args)
         elif args.command == 'automation-create':
             automation_create(args)
+        elif args.command == 'automation-list':
+            automation_list(args)
         elif args.command == 'environment-set':
             environment_set(args)
         elif args.command == 'environment-get':
