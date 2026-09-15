@@ -16,7 +16,7 @@ from .project import validate_project
 from .credentials import save_credentials, load_credentials, clear_credentials, set_default_environment
 from .http import api_request, api_upload, api_download
 
-SDK_VERSION = '0.4.5'
+SDK_VERSION = '0.4.6'
 SDK_RUNTIME_MIN = '0.4.0'
 SDK_REQUIREMENT = f'nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v{SDK_VERSION}.zip'
 VERSION_PATTERN = re.compile(r'\d+\.\d+(?:\.\d+)?')
@@ -574,6 +574,243 @@ def automation_list(args):
     result = api_request(base_url, 'GET', '/automations', token=token, headers={'X-Environment-ID': environment_id})
     print_result(result, args.json)
 
+
+def automation_get(args):
+    credentials = require_credentials()
+    automation_id = args.automation_id or require_automation_id(args.project.resolve())
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    result = api_request(base_url, 'GET', f'/automations/{automation_id}', token=token, headers={'X-Environment-ID': environment_id})
+    print_result(result, args.json)
+
+
+def automation_update(args):
+    credentials = require_credentials()
+    automation_id = args.automation_id or require_automation_id(args.project.resolve())
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    payload = {
+        'name': args.name, 'description': args.description,
+        'input_queue_id': args.input_queue_id, 'output_queue_id': args.output_queue_id,
+        'business_area_id': args.business_area_id, 'priority': args.priority,
+        'agent_ids': args.agent_id or [], 'credential_ids': args.credential_id or [],
+    }
+    result = api_request(base_url, 'PUT', f'/automations/{automation_id}', token=token, payload=payload,
+                          headers={'X-Environment-ID': environment_id})
+    print_result(result, args.json)
+
+
+def automation_delete(args):
+    credentials = require_credentials()
+    automation_id = args.automation_id or require_automation_id(args.project.resolve())
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    api_request(base_url, 'DELETE', f'/automations/{automation_id}', token=token, headers={'X-Environment-ID': environment_id})
+    print_result({'automation_id': automation_id, 'deleted': True}, args.json)
+
+
+def automation_archive(args):
+    credentials = require_credentials()
+    automation_id = args.automation_id or require_automation_id(args.project.resolve())
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    result = api_request(base_url, 'POST', f'/automations/{automation_id}/archive', token=token, headers={'X-Environment-ID': environment_id})
+    print_result(result, args.json)
+
+
+def automation_restore(args):
+    credentials = require_credentials()
+    automation_id = args.automation_id or require_automation_id(args.project.resolve())
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    result = api_request(base_url, 'POST', f'/automations/{automation_id}/restore', token=token, headers={'X-Environment-ID': environment_id})
+    print_result(result, args.json)
+
+
+def environment_list(args):
+    credentials = require_credentials()
+    base_url, token = credentials['api_base_url'], credentials['token']
+    result = api_request(base_url, 'GET', '/environments', token=token)
+    print_result(result, args.json)
+
+
+def credential_update(args):
+    credentials = require_credentials()
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    payload = {'name': args.name, 'value': parse_kv_pairs(args.data)}
+    if args.expires_at:
+        payload['expires_at'] = args.expires_at
+    if args.auto_rotate_days:
+        payload['auto_rotate_days'] = args.auto_rotate_days
+    if args.responsible_email:
+        payload['responsible_user_email'] = args.responsible_email
+    result = api_request(base_url, 'PUT', f'/credentials/{args.credential_id}', token=token, payload=payload,
+                          headers={'X-Environment-ID': environment_id})
+    print_result(result, args.json)
+
+
+def credential_delete(args):
+    credentials = require_credentials()
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    api_request(base_url, 'DELETE', f'/credentials/{args.credential_id}', token=token, headers={'X-Environment-ID': environment_id})
+    print_result({'credential_id': args.credential_id, 'deleted': True}, args.json)
+
+
+def webhook_update(args):
+    credentials = require_credentials()
+    root = args.project.resolve()
+    automation_id = args.automation_id or require_automation_id(root)
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    payload = {
+        'name': args.name, 'url': args.url, 'method': args.method,
+        'trigger_on': args.trigger_on or ['SUCCEEDED', 'FAILED'],
+        'credential_id': args.credential_id, 'is_active': not args.inactive,
+    }
+    result = api_request(base_url, 'PUT', f'/automations/{automation_id}/webhooks/{args.webhook_id}', token=token,
+                          payload=payload, headers={'X-Environment-ID': environment_id})
+    print_result(result, args.json)
+
+
+def webhook_delete(args):
+    credentials = require_credentials()
+    root = args.project.resolve()
+    automation_id = args.automation_id or require_automation_id(root)
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    api_request(base_url, 'DELETE', f'/automations/{automation_id}/webhooks/{args.webhook_id}', token=token,
+                headers={'X-Environment-ID': environment_id})
+    print_result({'webhook_id': args.webhook_id, 'deleted': True}, args.json)
+
+
+def queue_get(args):
+    credentials = require_credentials()
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    result = api_request(base_url, 'GET', f'/queues/{args.queue_id}', token=token, headers={'X-Environment-ID': environment_id})
+    print_result(result, args.json)
+
+
+def queue_update(args):
+    credentials = require_credentials()
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    payload = {'name': args.name, 'description': args.description}
+    result = api_request(base_url, 'PUT', f'/queues/{args.queue_id}', token=token, payload=payload,
+                          headers={'X-Environment-ID': environment_id})
+    print_result(result, args.json)
+
+
+def queue_delete(args):
+    credentials = require_credentials()
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    api_request(base_url, 'DELETE', f'/queues/{args.queue_id}', token=token, headers={'X-Environment-ID': environment_id})
+    print_result({'queue_id': args.queue_id, 'deleted': True}, args.json)
+
+
+def queue_messages(args):
+    credentials = require_credentials()
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    query = f'?limit={args.limit}&offset={args.offset}'
+    if args.status:
+        query += f'&status={args.status}'
+    result = api_request(base_url, 'GET', f'/queues/{args.queue_id}/messages{query}', token=token,
+                          headers={'X-Environment-ID': environment_id})
+    print_result(result, args.json)
+
+
+def trigger_update(args):
+    credentials = require_credentials()
+    root = args.project.resolve()
+    automation_id = args.automation_id or require_automation_id(root)
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    if args.version_id:
+        version_policy, version_id = 'PINNED', args.version_id
+    elif args.version:
+        version_policy, version_id = 'PINNED', resolve_version_id(base_url, token, automation_id, args.version)
+    else:
+        version_policy, version_id = 'CURRENT', None
+    payload = {
+        'name': args.name, 'type': args.type, 'version_policy': version_policy, 'version_id': version_id,
+        'cron_expression': args.cron, 'timezone': args.timezone,
+        'inputs': parse_kv_pairs(args.input), 'required_params': args.required_param or [],
+        'timeout_seconds': args.timeout, 'credential_ids': args.credential_id or [],
+        'require_auth': not args.no_require_auth, 'webhook_secret': args.webhook_secret,
+    }
+    result = api_request(base_url, 'PUT', f'/automations/{automation_id}/triggers/{args.trigger_id}', token=token,
+                          payload=payload, headers={'X-Environment-ID': environment_id})
+    print_result(result, args.json)
+
+
+def trigger_delete(args):
+    credentials = require_credentials()
+    root = args.project.resolve()
+    automation_id = args.automation_id or require_automation_id(root)
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    api_request(base_url, 'DELETE', f'/automations/{automation_id}/triggers/{args.trigger_id}', token=token,
+                headers={'X-Environment-ID': environment_id})
+    print_result({'trigger_id': args.trigger_id, 'deleted': True}, args.json)
+
+
+def trigger_toggle(args):
+    credentials = require_credentials()
+    root = args.project.resolve()
+    automation_id = args.automation_id or require_automation_id(root)
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    result = api_request(base_url, 'POST', f'/automations/{automation_id}/triggers/{args.trigger_id}/toggle', token=token,
+                          headers={'X-Environment-ID': environment_id})
+    print_result(result, args.json)
+
+
+def execution_cancel(args):
+    credentials = require_credentials()
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    result = api_request(base_url, 'POST', f'/executions/{args.execution_id}/cancel', token=token,
+                          headers={'X-Environment-ID': environment_id})
+    print_result(result, args.json)
+
+
+def execution_retry(args):
+    credentials = require_credentials()
+    base_url, token = credentials['api_base_url'], credentials['token']
+    environment_id = resolve_environment_id(base_url, token, args.environment)
+    result = api_request(base_url, 'POST', f'/executions/{args.execution_id}/retry', token=token,
+                          headers={'X-Environment-ID': environment_id})
+    print_result(result, args.json)
+
+
+def deployment_list(args):
+    credentials = require_credentials()
+    automation_id = args.automation_id or require_automation_id(args.project.resolve())
+    base_url, token = credentials['api_base_url'], credentials['token']
+    result = api_request(base_url, 'GET', f'/automations/{automation_id}/deployments', token=token)
+    print_result(result, args.json)
+
+
+def deployment_history(args):
+    credentials = require_credentials()
+    automation_id = args.automation_id or require_automation_id(args.project.resolve())
+    base_url, token = credentials['api_base_url'], credentials['token']
+    result = api_request(base_url, 'GET', f'/automations/{automation_id}/deployments/history', token=token)
+    print_result(result, args.json)
+
+
+def deployment_rollback(args):
+    credentials = require_credentials()
+    automation_id = args.automation_id or require_automation_id(args.project.resolve())
+    base_url, token = credentials['api_base_url'], credentials['token']
+    result = api_request(base_url, 'POST', f'/automations/{automation_id}/deployments/history/{args.event_id}/rollback', token=token)
+    print_result(result, args.json)
+
+
 def pull(args):
     credentials = require_credentials()
     root = args.project.resolve()
@@ -602,7 +839,20 @@ def pull(args):
             if destination.exists() and not item.is_dir() and not args.force:
                 raise RobotError(f'Arquivo já existe: {destination}. Use --force para sobrescrever.')
         archive.extractall(target)
+    ensure_automation_id(target, automation_id)
     print_result({'automation_id': automation_id, 'version_id': version_id, 'extracted_to': str(target)}, args.json)
+
+
+def ensure_automation_id(root: Path, automation_id: str):
+    # Grava o automation_id no nexus.toml extraído para que comandos seguintes não exijam --automation-id.
+    config_path = root / 'nexus.toml'
+    if not config_path.exists():
+        config_path.write_text(f'automation_id = "{automation_id}"\n', encoding='utf-8')
+        return
+    content = config_path.read_text(encoding='utf-8')
+    if re.search(r'(?m)^automation_id\s*=', content):
+        return
+    config_path.write_text(f'automation_id = "{automation_id}"\n' + content, encoding='utf-8')
 
 def environment_set(args):
     credentials = require_credentials()
@@ -758,6 +1008,54 @@ def main(argv=None):
     automation_list_parser = sub.add_parser('automation-list', help='Listar automações do ambiente')
     automation_list_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
 
+    automation_get_parser = sub.add_parser('automation-get', help='Ver detalhes da automação')
+    automation_get_parser.add_argument('--project', type=Path, default=Path('.'))
+    automation_get_parser.add_argument('--automation-id', help='padrão: automation_id do nexus.toml do projeto')
+    automation_get_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
+
+    automation_update_parser = sub.add_parser('automation-update', help='Atualizar a automação (substitui todos os campos, como no painel)')
+    automation_update_parser.add_argument('--project', type=Path, default=Path('.'))
+    automation_update_parser.add_argument('--automation-id', help='padrão: automation_id do nexus.toml do projeto')
+    automation_update_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
+    automation_update_parser.add_argument('--name', required=True)
+    automation_update_parser.add_argument('--description')
+    automation_update_parser.add_argument('--input-queue-id')
+    automation_update_parser.add_argument('--output-queue-id')
+    automation_update_parser.add_argument('--business-area-id')
+    automation_update_parser.add_argument('--priority', type=int, default=0)
+    automation_update_parser.add_argument('--agent-id', action='append', help='ID de VM/agente vinculado; pode repetir')
+    automation_update_parser.add_argument('--credential-id', action='append', help='ID de credencial vinculada; pode repetir')
+
+    automation_delete_parser = sub.add_parser('automation-delete', help='Remover a automação')
+    automation_delete_parser.add_argument('--project', type=Path, default=Path('.'))
+    automation_delete_parser.add_argument('--automation-id', help='padrão: automation_id do nexus.toml do projeto')
+    automation_delete_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
+
+    automation_archive_parser = sub.add_parser('automation-archive', help='Arquivar a automação')
+    automation_archive_parser.add_argument('--project', type=Path, default=Path('.'))
+    automation_archive_parser.add_argument('--automation-id', help='padrão: automation_id do nexus.toml do projeto')
+    automation_archive_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
+
+    automation_restore_parser = sub.add_parser('automation-restore', help='Restaurar uma automação arquivada')
+    automation_restore_parser.add_argument('--project', type=Path, default=Path('.'))
+    automation_restore_parser.add_argument('--automation-id', help='padrão: automation_id do nexus.toml do projeto')
+    automation_restore_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
+
+    sub.add_parser('environment-list', help='Listar os ambientes disponíveis para o seu perfil')
+
+    deployment_list_parser = sub.add_parser('deployment-list', help='Ver a versão implantada da automação em cada ambiente')
+    deployment_list_parser.add_argument('--project', type=Path, default=Path('.'))
+    deployment_list_parser.add_argument('--automation-id', help='padrão: automation_id do nexus.toml do projeto')
+
+    deployment_history_parser = sub.add_parser('deployment-history', help='Ver o histórico de promoções/implantações da automação')
+    deployment_history_parser.add_argument('--project', type=Path, default=Path('.'))
+    deployment_history_parser.add_argument('--automation-id', help='padrão: automation_id do nexus.toml do projeto')
+
+    deployment_rollback_parser = sub.add_parser('deployment-rollback', help='Reverter uma promoção usando o ID de um evento de deployment-history')
+    deployment_rollback_parser.add_argument('--project', type=Path, default=Path('.'))
+    deployment_rollback_parser.add_argument('--automation-id', help='padrão: automation_id do nexus.toml do projeto')
+    deployment_rollback_parser.add_argument('--event-id', required=True, help='ID do evento (coluna id de deployment-history)')
+
     pull_parser = sub.add_parser('pull', help='Baixar (e extrair) uma versão publicada da automação para o projeto local')
     pull_parser.add_argument('--project', type=Path, default=Path('.'), help='Diretório do projeto (usado para ler o automation_id em nexus.toml, salvo se --automation-id for informado)')
     pull_parser.add_argument('--automation-id', help='ID da automação (padrão: automation_id do nexus.toml do projeto)')
@@ -784,6 +1082,19 @@ def main(argv=None):
     credential_bind_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
     credential_bind_parser.add_argument('--credential-id', action='append', required=True, help='ID da credencial; pode repetir')
 
+    credential_update_parser = sub.add_parser('credential-update', help='Atualizar uma credencial (substitui todos os valores, como no painel)')
+    credential_update_parser.add_argument('--credential-id', required=True)
+    credential_update_parser.add_argument('--name', required=True)
+    credential_update_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
+    credential_update_parser.add_argument('--data', action='append', metavar='CHAVE=VALOR', required=True, help='Par chave=valor; pode repetir')
+    credential_update_parser.add_argument('--expires-at', help='Data ISO 8601 de expiração')
+    credential_update_parser.add_argument('--auto-rotate-days', type=int)
+    credential_update_parser.add_argument('--responsible-email', help='E-mail do responsável pela credencial')
+
+    credential_delete_parser = sub.add_parser('credential-delete', help='Remover uma credencial')
+    credential_delete_parser.add_argument('--credential-id', required=True)
+    credential_delete_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
+
     trigger_create_parser = sub.add_parser('trigger-create', help='Criar um disparador (agendamento ou webhook)')
     trigger_create_parser.add_argument('--project', type=Path, default=Path('.'))
     trigger_create_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
@@ -804,6 +1115,36 @@ def main(argv=None):
     trigger_list_parser.add_argument('--project', type=Path, default=Path('.'))
     trigger_list_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
 
+    trigger_update_parser = sub.add_parser('trigger-update', help='Atualizar um disparador (substitui todos os campos, como no painel)')
+    trigger_update_parser.add_argument('--project', type=Path, default=Path('.'))
+    trigger_update_parser.add_argument('--automation-id', help='padrão: automation_id do nexus.toml do projeto')
+    trigger_update_parser.add_argument('--trigger-id', required=True)
+    trigger_update_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
+    trigger_update_parser.add_argument('--name', required=True)
+    trigger_update_parser.add_argument('--type', required=True, choices=['SCHEDULE', 'WEBHOOK'])
+    trigger_update_parser.add_argument('--cron', help='Expressão cron; obrigatório para type=SCHEDULE')
+    trigger_update_parser.add_argument('--timezone', default='UTC')
+    trigger_update_parser.add_argument('--version', help='Versão publicada fixa (padrão: acompanhar a versão atual do ambiente)')
+    trigger_update_parser.add_argument('--version-id', help='ID da versão publicada fixa')
+    trigger_update_parser.add_argument('--input', action='append', metavar='CHAVE=VALOR', help='Parâmetro fixo de entrada; pode repetir')
+    trigger_update_parser.add_argument('--required-param', action='append', help='Nome de parâmetro obrigatório no webhook; pode repetir')
+    trigger_update_parser.add_argument('--timeout', type=int, default=300)
+    trigger_update_parser.add_argument('--credential-id', action='append', help='ID de credencial vinculada; pode repetir')
+    trigger_update_parser.add_argument('--no-require-auth', action='store_true', help='Desativar autenticação do webhook')
+    trigger_update_parser.add_argument('--webhook-secret', help='Segredo do webhook (gerado automaticamente se omitido)')
+
+    trigger_delete_parser = sub.add_parser('trigger-delete', help='Remover um disparador')
+    trigger_delete_parser.add_argument('--project', type=Path, default=Path('.'))
+    trigger_delete_parser.add_argument('--automation-id', help='padrão: automation_id do nexus.toml do projeto')
+    trigger_delete_parser.add_argument('--trigger-id', required=True)
+    trigger_delete_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
+
+    trigger_toggle_parser = sub.add_parser('trigger-toggle', help='Ativar/pausar um disparador')
+    trigger_toggle_parser.add_argument('--project', type=Path, default=Path('.'))
+    trigger_toggle_parser.add_argument('--automation-id', help='padrão: automation_id do nexus.toml do projeto')
+    trigger_toggle_parser.add_argument('--trigger-id', required=True)
+    trigger_toggle_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
+
     queue_create_parser = sub.add_parser('queue-create', help='Criar uma fila no ambiente selecionado')
     queue_create_parser.add_argument('--name', required=True)
     queue_create_parser.add_argument('--description')
@@ -819,6 +1160,27 @@ def main(argv=None):
     queue_send_parser.add_argument('--queue-id', required=True)
     queue_send_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
     queue_send_parser.add_argument('--data', action='append', metavar='CHAVE=VALOR', required=True, help='Par chave=valor; pode repetir')
+
+    queue_get_parser = sub.add_parser('queue-get', help='Ver detalhes de uma fila')
+    queue_get_parser.add_argument('--queue-id', required=True)
+    queue_get_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
+
+    queue_update_parser = sub.add_parser('queue-update', help='Atualizar nome/descrição de uma fila')
+    queue_update_parser.add_argument('--queue-id', required=True)
+    queue_update_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
+    queue_update_parser.add_argument('--name', required=True)
+    queue_update_parser.add_argument('--description')
+
+    queue_delete_parser = sub.add_parser('queue-delete', help='Remover uma fila (sem vínculos ou histórico de mensagens)')
+    queue_delete_parser.add_argument('--queue-id', required=True)
+    queue_delete_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
+
+    queue_messages_parser = sub.add_parser('queue-messages', help='Listar mensagens de uma fila')
+    queue_messages_parser.add_argument('--queue-id', required=True)
+    queue_messages_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
+    queue_messages_parser.add_argument('--status')
+    queue_messages_parser.add_argument('--limit', type=int, default=100)
+    queue_messages_parser.add_argument('--offset', type=int, default=0)
 
     execution_create_parser = sub.add_parser('execution-create', help='Disparar uma nova execução')
     execution_create_parser.add_argument('--project', type=Path, default=Path('.'))
@@ -838,6 +1200,14 @@ def main(argv=None):
     execution_logs_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
     execution_logs_parser.add_argument('--level')
     execution_logs_parser.add_argument('--limit', type=int, default=50)
+
+    execution_cancel_parser = sub.add_parser('execution-cancel', help='Cancelar uma execução em fila ou em andamento')
+    execution_cancel_parser.add_argument('--execution-id', required=True)
+    execution_cancel_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
+
+    execution_retry_parser = sub.add_parser('execution-retry', help='Repetir uma execução criando uma nova a partir dela')
+    execution_retry_parser.add_argument('--execution-id', required=True)
+    execution_retry_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
 
     environment_set_parser = sub.add_parser('environment-set', help='Definir variáveis de ambiente (ENV) da automação')
     environment_set_parser.add_argument('--project', type=Path, default=Path('.'))
@@ -861,6 +1231,24 @@ def main(argv=None):
     webhook_list_parser = sub.add_parser('webhook-list', help='Listar ações de saída (webhooks) da automação')
     webhook_list_parser.add_argument('--project', type=Path, default=Path('.'))
     webhook_list_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
+
+    webhook_update_parser = sub.add_parser('webhook-update', help='Atualizar uma ação de saída (webhook de execução)')
+    webhook_update_parser.add_argument('--project', type=Path, default=Path('.'))
+    webhook_update_parser.add_argument('--automation-id', help='padrão: automation_id do nexus.toml do projeto')
+    webhook_update_parser.add_argument('--webhook-id', required=True)
+    webhook_update_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
+    webhook_update_parser.add_argument('--name', required=True)
+    webhook_update_parser.add_argument('--url', required=True)
+    webhook_update_parser.add_argument('--method', default='POST', choices=['POST', 'PUT', 'PATCH', 'GET'])
+    webhook_update_parser.add_argument('--trigger-on', action='append', choices=['SUCCEEDED', 'FAILED', 'TIMED_OUT', 'CANCELLED'], help='Status que dispara o webhook; pode repetir (padrão: SUCCEEDED e FAILED)')
+    webhook_update_parser.add_argument('--credential-id', help='Credencial usada para autenticar a chamada de saída')
+    webhook_update_parser.add_argument('--inactive', action='store_true', help='Desativar o webhook')
+
+    webhook_delete_parser = sub.add_parser('webhook-delete', help='Remover uma ação de saída (webhook)')
+    webhook_delete_parser.add_argument('--project', type=Path, default=Path('.'))
+    webhook_delete_parser.add_argument('--automation-id', help='padrão: automation_id do nexus.toml do projeto')
+    webhook_delete_parser.add_argument('--webhook-id', required=True)
+    webhook_delete_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
 
     args = parser.parse_args(argv)
     try:
@@ -896,28 +1284,68 @@ def main(argv=None):
             credential_list(args)
         elif args.command == 'credential-bind':
             credential_bind(args)
+        elif args.command == 'credential-update':
+            credential_update(args)
+        elif args.command == 'credential-delete':
+            credential_delete(args)
         elif args.command == 'trigger-create':
             trigger_create(args)
         elif args.command == 'trigger-list':
             trigger_list(args)
+        elif args.command == 'trigger-update':
+            trigger_update(args)
+        elif args.command == 'trigger-delete':
+            trigger_delete(args)
+        elif args.command == 'trigger-toggle':
+            trigger_toggle(args)
         elif args.command == 'queue-create':
             queue_create(args)
         elif args.command == 'queue-bind':
             queue_bind(args)
         elif args.command == 'queue-send':
             queue_send(args)
+        elif args.command == 'queue-get':
+            queue_get(args)
+        elif args.command == 'queue-update':
+            queue_update(args)
+        elif args.command == 'queue-delete':
+            queue_delete(args)
+        elif args.command == 'queue-messages':
+            queue_messages(args)
         elif args.command == 'execution-create':
             execution_create(args)
         elif args.command == 'execution-list':
             execution_list(args)
         elif args.command == 'execution-logs':
             execution_logs(args)
+        elif args.command == 'execution-cancel':
+            execution_cancel(args)
+        elif args.command == 'execution-retry':
+            execution_retry(args)
         elif args.command == 'environment-use':
             environment_use(args)
+        elif args.command == 'environment-list':
+            environment_list(args)
         elif args.command == 'automation-create':
             automation_create(args)
         elif args.command == 'automation-list':
             automation_list(args)
+        elif args.command == 'automation-get':
+            automation_get(args)
+        elif args.command == 'automation-update':
+            automation_update(args)
+        elif args.command == 'automation-delete':
+            automation_delete(args)
+        elif args.command == 'automation-archive':
+            automation_archive(args)
+        elif args.command == 'automation-restore':
+            automation_restore(args)
+        elif args.command == 'deployment-list':
+            deployment_list(args)
+        elif args.command == 'deployment-history':
+            deployment_history(args)
+        elif args.command == 'deployment-rollback':
+            deployment_rollback(args)
         elif args.command == 'pull':
             pull(args)
         elif args.command == 'environment-set':
@@ -928,6 +1356,10 @@ def main(argv=None):
             webhook_create(args)
         elif args.command == 'webhook-list':
             webhook_list(args)
+        elif args.command == 'webhook-update':
+            webhook_update(args)
+        elif args.command == 'webhook-delete':
+            webhook_delete(args)
         else:
             package_project(args)
         return 0
