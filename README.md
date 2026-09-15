@@ -15,7 +15,7 @@ python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git
 Para fixar uma versão específica:
 
 ```bash
-python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git@v0.4.2
+python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git@v0.4.3
 ```
 
 Para desenvolvimento local dentro do monorepo:
