@@ -16,7 +16,7 @@ from .project import validate_project
 from .credentials import save_credentials, load_credentials, clear_credentials, set_default_environment
 from .http import api_request, api_upload, api_download
 
-SDK_VERSION = '0.4.6'
+SDK_VERSION = '0.4.7'
 SDK_RUNTIME_MIN = '0.4.0'
 SDK_REQUIREMENT = f'nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v{SDK_VERSION}.zip'
 VERSION_PATTERN = re.compile(r'\d+\.\d+(?:\.\d+)?')
@@ -811,6 +811,64 @@ def deployment_rollback(args):
     print_result(result, args.json)
 
 
+def bump(args):
+    root = args.project.resolve()
+    current = load_project_config(root).get('version')
+    if not current:
+        raise RobotError('nexus.toml não possui uma versão definida.')
+    parts = [int(part) for part in current.split('.')]
+    parts += [0] * (3 - len(parts))
+    major, minor, patch = parts[:3]
+    if args.part == 'major':
+        major, minor, patch = major + 1, 0, 0
+    elif args.part == 'minor':
+        minor, patch = minor + 1, 0
+    else:
+        patch += 1
+    new_version = f'{major}.{minor}.{patch}'
+    update_project_version(root, new_version)
+    print_result({'previous_version': current, 'version': new_version}, args.json)
+
+
+def doctor(args):
+    root = args.project.resolve()
+    checks = []
+
+    def check(name, ok, detail=''):
+        checks.append({'check': name, 'ok': ok, 'detail': detail})
+
+    check('python_version', sys.version_info >= (3, 12), f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro} (mínimo: 3.12)')
+
+    config = None
+    try:
+        config = load_project_config(root)
+        check('nexus_toml', True, str(root / 'nexus.toml'))
+    except OSError:
+        check('nexus_toml', False, 'nexus.toml não encontrado neste diretório (opcional fora de um projeto)')
+
+    if config is not None:
+        check('automation_id', bool(config.get('automation_id')), 'Execute: nexus publish ou nexus automation-create' if not config.get('automation_id') else '')
+        sdk_min = (config.get('runtime') or {}).get('sdk_min')
+        if sdk_min:
+            check('sdk_min_compatible', tuple(int(part) for part in SDK_VERSION.split('.')) >= tuple(int(part) for part in sdk_min.split('.')),
+                  f'SDK instalado: {SDK_VERSION}, mínimo exigido: {sdk_min}')
+
+    credentials = load_credentials()
+    check('authenticated', bool(credentials), 'Execute: nexus login' if not credentials else credentials.get('api_base_url'))
+    if credentials:
+        try:
+            api_request(credentials['api_base_url'], 'GET', '/auth/profile', token=credentials['token'])
+            check('api_reachable', True, credentials['api_base_url'])
+        except RobotError as error:
+            check('api_reachable', False, str(error))
+        check('default_environment', bool(credentials.get('default_environment')),
+              'Execute: nexus environment-use <AMBIENTE>' if not credentials.get('default_environment') else credentials.get('default_environment'))
+
+    ok = all(item['ok'] for item in checks)
+    print_result({'ok': ok, 'checks': checks}, args.json)
+    return 0 if ok else 1
+
+
 def pull(args):
     credentials = require_credentials()
     root = args.project.resolve()
@@ -973,6 +1031,11 @@ def main(argv=None):
     validate = sub.add_parser('validate', help='Validar configuração sem executar o código do bot')
     validate.add_argument('--project', type=Path, default=Path('.'))
     validate.add_argument('--strict', action='store_true', help='Tratar avisos como erros')
+    doctor_parser = sub.add_parser('doctor', help='Diagnosticar ambiente local, projeto e autenticação')
+    doctor_parser.add_argument('--project', type=Path, default=Path('.'))
+    bump_parser = sub.add_parser('bump', help='Incrementar a versão em nexus.toml (semver)')
+    bump_parser.add_argument('--project', type=Path, default=Path('.'))
+    bump_parser.add_argument('--part', default='patch', choices=['major', 'minor', 'patch'])
     login_parser = sub.add_parser('login', help='Autenticar o CLI com um Personal Access Token')
     login_parser.add_argument('--api-url', default=os.environ.get('NEXUS_API_URL', 'https://api.nexusorchestrator.com'), help='URL base da API Nexus')
     login_parser.add_argument('--token', help='Personal Access Token (nxs_...); se omitido, será solicitado interativamente')
@@ -1262,6 +1325,10 @@ def main(argv=None):
             report = validate_project(args.project)
             print_result(report, args.json)
             return 1 if args.strict and report['warnings'] else 0
+        elif args.command == 'doctor':
+            return doctor(args)
+        elif args.command == 'bump':
+            bump(args)
         elif args.command == 'inspect':
             script = entrypoint(args.project)
             print_result({'package_path': script.relative_to(args.project.resolve()).as_posix(), 'entrypoint': script.name,
