@@ -13,10 +13,10 @@ import tomllib
 import zipfile
 from .core import RobotError, read_object, write_object
 from .project import validate_project
-from .credentials import save_credentials, load_credentials, clear_credentials, set_default_environment
+from .credentials import save_credentials, load_credentials, clear_credentials, set_default_environment, list_profiles, use_profile
 from .http import api_request, api_upload, api_download
 
-SDK_VERSION = '0.4.8'
+SDK_VERSION = '0.4.9'
 SDK_RUNTIME_MIN = '0.4.0'
 SDK_REQUIREMENT = f'nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v{SDK_VERSION}.zip'
 VERSION_PATTERN = re.compile(r'\d+\.\d+(?:\.\d+)?')
@@ -306,38 +306,53 @@ def run_local(args):
         return 0
 
 
-def perform_login(base_url, token):
+def perform_login(base_url, token, profile=None):
     base_url = base_url.rstrip('/')
     if not token.startswith('nxs_'):
         raise RobotError('Token inválido. Gere um token pessoal em Perfil > Tokens de API.')
-    profile = api_request(base_url, 'GET', '/auth/profile', token=token)
+    account = api_request(base_url, 'GET', '/auth/profile', token=token)
     tokens = api_request(base_url, 'GET', '/auth/tokens', token=token)
     organization_id, organization_name = None, None
     matching = [item for item in (tokens or []) if item.get('prefix') and token.startswith(item['prefix'])]
     if matching:
         organization_id = matching[0]['organization_id']
         organization_name = matching[0]['organization_name']
-    save_credentials(base_url, token, organization_id, organization_name)
-    return profile, load_credentials()
+    profile_name = save_credentials(base_url, token, organization_id, organization_name, profile=profile)
+    return account, load_credentials(), profile_name
 
 
 def login(args):
     token = args.token or input('Cole seu Personal Access Token (nxs_...): ').strip()
-    profile, credentials = perform_login(args.api_url, token)
-    print_result({'logged_in_as': profile.get('email'), 'api_url': credentials['api_base_url'],
-                  'organization': credentials.get('organization_name')}, args.json)
+    account, credentials, profile_name = perform_login(args.api_url, token, profile=args.profile)
+    print_result({'logged_in_as': account.get('email'), 'api_url': credentials['api_base_url'],
+                  'organization': credentials.get('organization_name'), 'profile': profile_name}, args.json)
 
 
 def logout(args):
-    clear_credentials()
-    print('Sessão local removida.')
+    clear_credentials(profile=args.profile)
+    print(f'Perfil "{args.profile}" removido.' if args.profile else 'Todas as sessões locais foram removidas.')
 
 
 def whoami(args):
     credentials = require_credentials()
-    profile = api_request(credentials['api_base_url'], 'GET', '/auth/profile', token=credentials['token'])
-    print_result({'email': profile.get('email'), 'api_url': credentials['api_base_url'],
-                  'organization': credentials.get('organization_name')}, args.json)
+    active, _ = list_profiles()
+    account = api_request(credentials['api_base_url'], 'GET', '/auth/profile', token=credentials['token'])
+    print_result({'email': account.get('email'), 'api_url': credentials['api_base_url'],
+                  'organization': credentials.get('organization_name'), 'profile': active}, args.json)
+
+
+def profile_list(args):
+    active, profiles = list_profiles()
+    print_result([{'profile': name, 'api_url': data['api_base_url'], 'organization': data.get('organization_name'),
+                    'active': name == active} for name, data in profiles.items()], args.json)
+
+
+def profile_use(args):
+    try:
+        use_profile(args.name)
+    except KeyError:
+        raise RobotError(f'Perfil "{args.name}" não encontrado. Rode: nexus profile-list')
+    print_result({'active_profile': args.name}, args.json)
 
 
 def require_credentials():
@@ -1047,8 +1062,13 @@ def main(argv=None):
     login_parser = sub.add_parser('login', help='Autenticar o CLI com um Personal Access Token')
     login_parser.add_argument('--api-url', default=os.environ.get('NEXUS_API_URL', 'https://api.nexusorchestrator.com'), help='URL base da API Nexus')
     login_parser.add_argument('--token', help='Personal Access Token (nxs_...); se omitido, será solicitado interativamente')
-    sub.add_parser('logout', help='Remover as credenciais salvas localmente')
+    login_parser.add_argument('--profile', help='Nome do perfil (ex: local, staging-clienteA, prod-clienteB); padrão: derivado da URL da API')
+    logout_parser = sub.add_parser('logout', help='Remover as credenciais salvas localmente')
+    logout_parser.add_argument('--profile', help='Remover apenas este perfil; padrão: remove todos')
     sub.add_parser('whoami', help='Mostrar a conta autenticada atualmente')
+    sub.add_parser('profile-list', help='Listar os perfis (URL + conta) com login salvo')
+    profile_use_parser = sub.add_parser('profile-use', help='Trocar de perfil sem precisar logar de novo')
+    profile_use_parser.add_argument('name', help='Nome do perfil, veja em: nexus profile-list')
     publish = sub.add_parser('publish', help='Empacotar e enviar uma nova versão para o Nexus')
     publish.add_argument('--project', type=Path, default=Path('.'))
     publish.add_argument('--version', help='Atualizar nexus.toml e publicar com esta versão')
@@ -1347,6 +1367,10 @@ def main(argv=None):
             logout(args)
         elif args.command == 'whoami':
             whoami(args)
+        elif args.command == 'profile-list':
+            profile_list(args)
+        elif args.command == 'profile-use':
+            profile_use(args)
         elif args.command == 'publish':
             publish_project(args)
         elif args.command == 'set-current':
