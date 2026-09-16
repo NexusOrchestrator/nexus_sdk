@@ -15,7 +15,7 @@ python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git
 Para fixar uma versão específica:
 
 ```bash
-python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git@v0.4.8
+python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git@v0.4.9
 ```
 
 Para desenvolvimento local dentro do monorepo:
@@ -160,10 +160,33 @@ nexus package --version 1.0.0                    # gera dist/meu-bot-1.0.0.zip
 
 Autenticado (Personal Access Token), com paridade total ao painel web:
 
+Cada `nexus login` salva um **perfil** separado (URL da API + token), nomeado a partir da URL (ou `--profile <nome>` para escolher o nome). Isso cobre tanto múltiplos ambientes (local/staging/produção) quanto múltiplas contas dentro do mesmo ambiente — basta nomear os perfis explicitamente:
+
+```bash
+nexus login --api-url http://localhost:8000 --profile local
+
+nexus login --api-url https://api-staging.suaempresa.com --profile staging-clienteA
+nexus login --api-url https://api-staging.suaempresa.com --profile staging-clienteB
+
+nexus login --api-url https://api.suaempresa.com --profile prod-clienteA
+nexus login --api-url https://api.suaempresa.com --profile prod-clienteB
+
+nexus profile-list                                          # lista os perfis salvos e qual está ativo
+nexus profile-use prod-clienteB                              # troca o perfil ativo sem pedir login de novo
+```
+
+Sem `--profile`, o nome é derivado da URL da API — então dois logins na mesma URL sem `--profile` explícito se sobrescrevem; use nomes explícitos quando tiver mais de uma conta na mesma URL.
+
+Também dá para sobrepor o perfil ativo só na sessão atual do terminal, sem mexer no padrão salvo:
+
+```bash
+NEXUS_PROFILE=local nexus publish --version 1.0.1 --publish
+```
+
 ```bash
 nexus login --api-url https://api.suaempresa.com          # autentica o CLI e salva o token localmente
 nexus whoami                                                # mostra a conta e organização autenticadas
-nexus logout                                                # remove as credenciais salvas
+nexus logout                                                # remove as credenciais salvas (use --profile para remover só um perfil)
 nexus environment-use STAGING                               # define o ambiente padrão (valida acesso antes de salvar)
 nexus publish --version 1.0.1 --publish                     # empacota, envia e publica uma nova versão
 nexus automation-create --name "Meu Bot"                    # cria a automação sem publicar nenhuma versão
@@ -232,10 +255,10 @@ Para publicar uma nova versão:
 cd apps/sdk
 git status
 git add .
-git commit -m "Release SDK 0.4.8"
-git tag v0.4.8
+git commit -m "Release SDK 0.4.9"
+git tag v0.4.9
 git push origin main
-git push origin v0.4.8
+git push origin v0.4.9
 ```
 
 Atualize a versão em:

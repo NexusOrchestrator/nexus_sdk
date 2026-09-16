@@ -8,6 +8,7 @@ src/nexus_sdk/errors.py
 src/nexus_sdk/http.py
 src/nexus_sdk/models.py
 src/nexus_sdk/project.py
+src/nexus_sdk/py.typed
 src/nexus_sdk/queues.py
 src/nexus_sdk/runtime.py
 src/nexus_sdk/testing.py
