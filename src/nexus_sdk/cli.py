@@ -16,7 +16,7 @@ from .project import validate_project
 from .credentials import save_credentials, load_credentials, clear_credentials, set_default_environment
 from .http import api_request, api_upload, api_download
 
-SDK_VERSION = '0.4.7'
+SDK_VERSION = '0.4.8'
 SDK_RUNTIME_MIN = '0.4.0'
 SDK_REQUIREMENT = f'nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v{SDK_VERSION}.zip'
 VERSION_PATTERN = re.compile(r'\d+\.\d+(?:\.\d+)?')
@@ -306,9 +306,8 @@ def run_local(args):
         return 0
 
 
-def login(args):
-    base_url = args.api_url.rstrip('/')
-    token = args.token or input('Cole seu Personal Access Token (nxs_...): ').strip()
+def perform_login(base_url, token):
+    base_url = base_url.rstrip('/')
     if not token.startswith('nxs_'):
         raise RobotError('Token inválido. Gere um token pessoal em Perfil > Tokens de API.')
     profile = api_request(base_url, 'GET', '/auth/profile', token=token)
@@ -319,7 +318,14 @@ def login(args):
         organization_id = matching[0]['organization_id']
         organization_name = matching[0]['organization_name']
     save_credentials(base_url, token, organization_id, organization_name)
-    print_result({'logged_in_as': profile.get('email'), 'api_url': base_url, 'organization': organization_name}, args.json)
+    return profile, load_credentials()
+
+
+def login(args):
+    token = args.token or input('Cole seu Personal Access Token (nxs_...): ').strip()
+    profile, credentials = perform_login(args.api_url, token)
+    print_result({'logged_in_as': profile.get('email'), 'api_url': credentials['api_base_url'],
+                  'organization': credentials.get('organization_name')}, args.json)
 
 
 def logout(args):
@@ -328,19 +334,23 @@ def logout(args):
 
 
 def whoami(args):
-    credentials = load_credentials()
-    if not credentials:
-        raise RobotError('Você não está autenticado. Execute: nexus login')
+    credentials = require_credentials()
     profile = api_request(credentials['api_base_url'], 'GET', '/auth/profile', token=credentials['token'])
     print_result({'email': profile.get('email'), 'api_url': credentials['api_base_url'],
                   'organization': credentials.get('organization_name')}, args.json)
 
 
 def require_credentials():
+    """Every action that touches the API goes through here: prompts an inline login instead of just failing."""
     credentials = load_credentials()
-    if not credentials:
-        raise RobotError('Você não está autenticado. Execute: nexus login')
-    return credentials
+    if credentials:
+        return credentials
+    print('Você não está autenticado. Faça login para continuar.')
+    base_url = os.environ.get('NEXUS_API_URL', 'https://api.nexusorchestrator.com')
+    entered_url = input(f'URL da API [{base_url}]: ').strip()
+    token = input('Cole seu Personal Access Token (nxs_...): ').strip()
+    perform_login(entered_url or base_url, token)
+    return load_credentials()
 
 
 def require_automation_id(root: Path):
@@ -963,9 +973,7 @@ def webhook_list(args):
 
 
 def publish_project(args):
-    credentials = load_credentials()
-    if not credentials:
-        raise RobotError('Você não está autenticado. Execute: nexus login')
+    credentials = require_credentials()
     root = args.project.resolve()
     if args.version:
         update_project_version(root, validate_version(args.version))

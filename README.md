@@ -15,7 +15,7 @@ python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git
 Para fixar uma versão específica:
 
 ```bash
-python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git@v0.4.7
+python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git@v0.4.8
 ```
 
 Para desenvolvimento local dentro do monorepo:
@@ -232,10 +232,10 @@ Para publicar uma nova versão:
 cd apps/sdk
 git status
 git add .
-git commit -m "Release SDK 0.4.7"
-git tag v0.4.7
+git commit -m "Release SDK 0.4.8"
+git tag v0.4.8
 git push origin main
-git push origin v0.4.7
+git push origin v0.4.8
 ```
 
 Atualize a versão em:
