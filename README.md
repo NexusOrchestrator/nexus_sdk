@@ -247,7 +247,7 @@ nexus credential-update --credential-id <id> --name "API Key" --data CHAVE=novo_
 nexus credential-delete --credential-id <id>                 # remove uma credencial
 nexus credential-list --environment DEVELOPMENT              # lista credenciais do ambiente
 nexus credential-bind --credential-id <id> --credential-id <id2>  # associa credenciais à automação do projeto
-nexus environment-set --set CHAVE=valor --set OUTRA=valor2   # define variáveis de ambiente (ENV) da automação
+nexus environment-set --set CHAVE=valor --set OUTRA=valor2   # define variáveis de ambiente (ENV) da automação (merge por padrão; --replace substitui todas)
 nexus environment-get                                        # mostra as variáveis de ambiente (ENV) da automação
 nexus trigger-create --name "Diário" --type SCHEDULE --cron "0 9 * * *"  # cria um disparador de agendamento
 nexus trigger-list                                           # lista disparadores da automação do projeto
