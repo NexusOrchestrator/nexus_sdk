@@ -142,7 +142,7 @@ Preencha só o que o bot usa. Exemplo completo, com fila de entrada (`input` com
 nexus run --fixtures fixtures.json --publications-output publicacoes.json
 ```
 
-Os nomes em `credentials` precisam bater com os usados em `ctx.credential(...)` e listados em `credentials = [...]` no `nexus.toml`. Sem `message`, `ctx.queues.consume()` sempre retorna `None`; sem `output`, `ctx.queues.publish(...)` lança `ConfigurationError`. `--publications-output` grava em JSON o que seria publicado, sem enviar nada de verdade. As chaves de `environment` viram variáveis de ambiente reais (leia com `os.environ.get("CHAVE")`); um `.env` na raiz do projeto também é carregado automaticamente, com `environment` do fixture tendo prioridade em caso de chave repetida.
+Os nomes em `credentials` precisam bater com os usados em `ctx.credential(...)` e listados em `credentials = [...]` no `nexus.toml`. Sem `message`, `ctx.queues.consume()` sempre retorna `None`; sem `output`, `ctx.queues.publish(...)` lança `ConfigurationError`. `publish()` nunca escreve de volta no `fixtures.json` (só leitura/entrada) — `--publications-output` grava o que seria publicado em um arquivo JSON separado e descartável, sem enviar nada de verdade. As chaves de `environment` viram variáveis de ambiente reais (leia com `os.environ.get("CHAVE")`); um `.env` na raiz do projeto também é carregado automaticamente, com `environment` do fixture tendo prioridade em caso de chave repetida.
 
 ## Validação
 
