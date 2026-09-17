@@ -16,7 +16,7 @@ from .project import validate_project
 from .credentials import save_credentials, load_credentials, clear_credentials, set_default_environment, list_profiles, use_profile
 from .http import api_request, api_upload, api_download
 
-SDK_VERSION = '0.4.10'
+SDK_VERSION = '0.4.11'
 SDK_RUNTIME_MIN = '0.4.0'
 SDK_REQUIREMENT = f'nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v{SDK_VERSION}.zip'
 VERSION_PATTERN = re.compile(r'\d+\.\d+(?:\.\d+)?')
@@ -258,6 +258,18 @@ def package_project(args):
                       'size_bytes': output.stat().st_size}, indent=2))
 
 
+def _default_playwright_browsers_path():
+    """Where `playwright install` puts browsers on the real HOME, so isolated runs can still find them."""
+    if 'PLAYWRIGHT_BROWSERS_PATH' in os.environ:
+        return os.environ['PLAYWRIGHT_BROWSERS_PATH']
+    if sys.platform == 'darwin':
+        return str(Path.home() / 'Library' / 'Caches' / 'ms-playwright')
+    if os.name == 'nt':
+        base = os.environ.get('LOCALAPPDATA', str(Path.home() / 'AppData' / 'Local'))
+        return str(Path(base) / 'ms-playwright')
+    return str(Path(os.environ.get('XDG_CACHE_HOME', str(Path.home() / '.cache'))) / 'ms-playwright')
+
+
 def run_local(args):
     script = entrypoint(args.project)
     fixtures = read_object(args.fixtures, limit=512 * 1024) if args.fixtures else {}
@@ -286,6 +298,7 @@ def run_local(args):
         write_object(queue_file, fixtures.get('queues', {}))
         environment = {key: os.environ[key] for key in ('PATH', 'SYSTEMROOT', 'WINDIR', 'LANG') if key in os.environ}
         environment.update(HOME=str(work), TMPDIR=str(work), TEMP=str(work), TMP=str(work),
+                           PLAYWRIGHT_BROWSERS_PATH=_default_playwright_browsers_path(),
                            NEXUS_INPUT_FILE=str(source), NEXUS_RESULT_FILE=str(result_file), NEXUS_EXECUTION_ID='local',
                            NEXUS_SECRETS_FILE=str(secrets_file), NEXUS_QUEUE_CONTEXT_FILE=str(queue_file),
                            NEXUS_QUEUE_OUTPUT_FILE=str(work / 'publications.json'))
