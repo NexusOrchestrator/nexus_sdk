@@ -109,22 +109,37 @@ nexus run --inputs inputs.json
 
 ### Credenciais e filas locais (`--fixtures`)
 
-`nexus run` nunca contata a API nem o vault de credenciais do painel. Para testar um bot que usa `ctx.credential(...)` ou `ctx.queues.input`, crie um fixture com valores fictícios (não versionar):
+`nexus run` nunca contata a API nem o vault de credenciais do painel. Para testar um bot que usa `ctx.credential(...)` ou `ctx.queues`, crie um fixture com valores fictícios (não versionar). `nexus init` já gera um vazio:
+
+```json
+{
+  "inputs": { "name": "Minha empresa" },
+  "environment": {},
+  "credentials": {},
+  "queues": {}
+}
+```
+
+Preencha só o que o bot usa. Exemplo completo, com fila de entrada (`input` + `message`) e de saída (`output`):
 
 ```json
 {
   "inputs": { "nome": "Acme" },
+  "environment": { "URL_BASE": "https://exemplo.com" },
   "credentials": { "erp": { "username": "teste", "password": "teste" } },
-  "queues": {},
-  "environment": { "URL_BASE": "https://exemplo.com" }
+  "queues": {
+    "input": { "id": "fila-1", "name": "entradas" },
+    "message": { "id": "msg-1", "payload": { "pedido_id": 123 }, "attempts": 1 },
+    "output": { "id": "fila-2", "name": "resultados" }
+  }
 }
 ```
 
 ```bash
-nexus run --fixtures fixtures.json
+nexus run --fixtures fixtures.json --publications-output publicacoes.json
 ```
 
-Os nomes em `credentials` precisam bater com os usados em `ctx.credential(...)` e listados em `credentials = [...]` no `nexus.toml`. As chaves de `environment` viram variáveis de ambiente reais (leia com `os.environ.get("CHAVE")`); um `.env` na raiz do projeto também é carregado automaticamente, com `environment` do fixture tendo prioridade em caso de chave repetida.
+Os nomes em `credentials` precisam bater com os usados em `ctx.credential(...)` e listados em `credentials = [...]` no `nexus.toml`. Sem `message`, `ctx.queues.consume()` sempre retorna `None`; sem `output`, `ctx.queues.publish(...)` lança `ConfigurationError`. `--publications-output` grava em JSON o que seria publicado, sem enviar nada de verdade. As chaves de `environment` viram variáveis de ambiente reais (leia com `os.environ.get("CHAVE")`); um `.env` na raiz do projeto também é carregado automaticamente, com `environment` do fixture tendo prioridade em caso de chave repetida.
 
 ## Validação
 
