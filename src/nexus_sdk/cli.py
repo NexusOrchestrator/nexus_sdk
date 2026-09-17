@@ -16,7 +16,7 @@ from .project import validate_project
 from .credentials import save_credentials, load_credentials, clear_credentials, set_default_environment, list_profiles, use_profile
 from .http import api_request, api_upload, api_download
 
-SDK_VERSION = '0.4.11'
+SDK_VERSION = '0.4.12'
 SDK_RUNTIME_MIN = '0.4.0'
 SDK_REQUIREMENT = f'nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v{SDK_VERSION}.zip'
 VERSION_PATTERN = re.compile(r'\d+\.\d+(?:\.\d+)?')
@@ -109,7 +109,7 @@ def init_project(path):
     (path / 'nexus.toml').write_text('name = ' + json.dumps(path.resolve().name, ensure_ascii=False) + f'\nentrypoint = "bot.py"\nversion = "1.0.0"\ncredentials = []\n\n[runtime]\npython = "3.12"\nsdk_min = "{SDK_RUNTIME_MIN}"\n', encoding='utf-8')
     (path / 'inputs.json').write_text('{"name": "Minha empresa"}\n', encoding='utf-8')
     (path / 'fixtures.json').write_text(
-        json.dumps({'inputs': {'name': 'Minha empresa'}, 'credentials': {}, 'queues': {}}, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        json.dumps({'inputs': {'name': 'Minha empresa'}, 'credentials': {}, 'queues': {}, 'environment': {}}, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     (path / 'requirements.txt').write_text(f'{SDK_REQUIREMENT}\n# Adicione abaixo apenas as bibliotecas usadas pelo seu bot.\n', encoding='utf-8')
     (path / '.gitignore').write_text('.venv/\n__pycache__/\nresult.json\n.env\n*.local.json\nfixtures.json\ndist/\n', encoding='utf-8')
     (path / 'README.md').write_text(f'# Framework Nexus\n\nExecute localmente:\n\n```sh\nnexus run --inputs inputs.json\n```\n\nCom credenciais/filas de teste:\n\n```sh\nnexus run --fixtures fixtures.json\n```\n\nEmpacote para publicar no Nexus:\n\n```sh\nnexus package\n```\n\nO `requirements.txt` já fixa o SDK na tag pública `{SDK_VERSION}`:\n\n```txt\n{SDK_REQUIREMENT}\n```\n\nAdicione suas dependências de automação abaixo dessa linha.\n', encoding='utf-8')
@@ -270,10 +270,27 @@ def _default_playwright_browsers_path():
     return str(Path(os.environ.get('XDG_CACHE_HOME', str(Path.home() / '.cache'))) / 'ms-playwright')
 
 
+def _parse_dotenv(path):
+    """Minimal KEY=VALUE parser: no interpolation, no multiline values, '#' starts a comment."""
+    variables = {}
+    for line in path.read_text(encoding='utf-8').splitlines():
+        line = line.strip()
+        if not line or line.startswith('#') or '=' not in line:
+            continue
+        key, _, value = line.partition('=')
+        key = key.strip().removeprefix('export ').strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+            value = value[1:-1]
+        if key:
+            variables[key] = value
+    return variables
+
+
 def run_local(args):
     script = entrypoint(args.project)
     fixtures = read_object(args.fixtures, limit=512 * 1024) if args.fixtures else {}
-    for field in ('inputs', 'credentials', 'queues'):
+    for field in ('inputs', 'credentials', 'queues', 'environment'):
         if not isinstance(fixtures.get(field, {}), dict):
             raise RobotError(f'O campo {field} do fixture deve ser um objeto JSON.')
     inputs = read_object(args.inputs) if args.inputs else fixtures.get('inputs', {})
@@ -287,6 +304,9 @@ def run_local(args):
             raise RobotError('Use um arquivo JSON de saída diferente dos arquivos de entrada/configuração.')
     if args.output and args.publications_output and args.output.resolve() == args.publications_output.resolve():
         raise RobotError('Resultado e publicações precisam de arquivos distintos.')
+    dotenv_path = args.project / '.env'
+    bot_environment = _parse_dotenv(dotenv_path) if dotenv_path.is_file() else {}
+    bot_environment.update({key: str(value) for key, value in fixtures.get('environment', {}).items()})
     with tempfile.TemporaryDirectory(prefix='nexus-local-') as directory:
         work = Path(directory)
         source = work / 'inputs.json'
@@ -297,6 +317,7 @@ def run_local(args):
         write_object(secrets_file, fixtures.get('credentials', {}), limit=256 * 1024)
         write_object(queue_file, fixtures.get('queues', {}))
         environment = {key: os.environ[key] for key in ('PATH', 'SYSTEMROOT', 'WINDIR', 'LANG') if key in os.environ}
+        environment.update(bot_environment)
         environment.update(HOME=str(work), TMPDIR=str(work), TEMP=str(work), TMP=str(work),
                            PLAYWRIGHT_BROWSERS_PATH=_default_playwright_browsers_path(),
                            NEXUS_INPUT_FILE=str(source), NEXUS_RESULT_FILE=str(result_file), NEXUS_EXECUTION_ID='local',
