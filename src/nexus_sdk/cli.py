@@ -16,7 +16,7 @@ from .project import validate_project
 from .credentials import save_credentials, load_credentials, clear_credentials, set_default_environment, list_profiles, use_profile
 from .http import api_request, api_upload, api_download
 
-SDK_VERSION = '0.4.9'
+SDK_VERSION = '0.4.10'
 SDK_RUNTIME_MIN = '0.4.0'
 SDK_REQUIREMENT = f'nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v{SDK_VERSION}.zip'
 VERSION_PATTERN = re.compile(r'\d+\.\d+(?:\.\d+)?')
@@ -108,9 +108,11 @@ def init_project(path):
         '        self.assertEqual(response.result["processed"], 1)\n', encoding='utf-8')
     (path / 'nexus.toml').write_text('name = ' + json.dumps(path.resolve().name, ensure_ascii=False) + f'\nentrypoint = "bot.py"\nversion = "1.0.0"\ncredentials = []\n\n[runtime]\npython = "3.12"\nsdk_min = "{SDK_RUNTIME_MIN}"\n', encoding='utf-8')
     (path / 'inputs.json').write_text('{"name": "Minha empresa"}\n', encoding='utf-8')
+    (path / 'fixtures.json').write_text(
+        json.dumps({'inputs': {'name': 'Minha empresa'}, 'credentials': {}, 'queues': {}}, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     (path / 'requirements.txt').write_text(f'{SDK_REQUIREMENT}\n# Adicione abaixo apenas as bibliotecas usadas pelo seu bot.\n', encoding='utf-8')
-    (path / '.gitignore').write_text('.venv/\n__pycache__/\nresult.json\n.env\n*.local.json\ndist/\n', encoding='utf-8')
-    (path / 'README.md').write_text(f'# Framework Nexus\n\nExecute localmente:\n\n```sh\nnexus run --inputs inputs.json\n```\n\nEmpacote para publicar no Nexus:\n\n```sh\nnexus package\n```\n\nO `requirements.txt` já fixa o SDK na tag pública `{SDK_VERSION}`:\n\n```txt\n{SDK_REQUIREMENT}\n```\n\nAdicione suas dependências de automação abaixo dessa linha.\n', encoding='utf-8')
+    (path / '.gitignore').write_text('.venv/\n__pycache__/\nresult.json\n.env\n*.local.json\nfixtures.json\ndist/\n', encoding='utf-8')
+    (path / 'README.md').write_text(f'# Framework Nexus\n\nExecute localmente:\n\n```sh\nnexus run --inputs inputs.json\n```\n\nCom credenciais/filas de teste:\n\n```sh\nnexus run --fixtures fixtures.json\n```\n\nEmpacote para publicar no Nexus:\n\n```sh\nnexus package\n```\n\nO `requirements.txt` já fixa o SDK na tag pública `{SDK_VERSION}`:\n\n```txt\n{SDK_REQUIREMENT}\n```\n\nAdicione suas dependências de automação abaixo dessa linha.\n', encoding='utf-8')
     print(f'Projeto criado em {path.resolve()}\nEntre na pasta e execute: nexus run --inputs inputs.json')
 
 
