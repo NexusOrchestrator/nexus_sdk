@@ -115,7 +115,8 @@ nexus run --inputs inputs.json
 {
   "inputs": { "nome": "Acme" },
   "credentials": { "erp": { "username": "teste", "password": "teste" } },
-  "queues": {}
+  "queues": {},
+  "environment": { "URL_BASE": "https://exemplo.com" }
 }
 ```
 
@@ -123,7 +124,7 @@ nexus run --inputs inputs.json
 nexus run --fixtures fixtures.json
 ```
 
-Os nomes em `credentials` precisam bater com os usados em `ctx.credential(...)` e listados em `credentials = [...]` no `nexus.toml`.
+Os nomes em `credentials` precisam bater com os usados em `ctx.credential(...)` e listados em `credentials = [...]` no `nexus.toml`. As chaves de `environment` viram variáveis de ambiente reais (leia com `os.environ.get("CHAVE")`); um `.env` na raiz do projeto também é carregado automaticamente, com `environment` do fixture tendo prioridade em caso de chave repetida.
 
 ## Validação
 
