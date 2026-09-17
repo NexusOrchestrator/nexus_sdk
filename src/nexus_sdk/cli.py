@@ -16,7 +16,7 @@ from .project import validate_project
 from .credentials import save_credentials, load_credentials, clear_credentials, set_default_environment, list_profiles, use_profile
 from .http import api_request, api_upload, api_download
 
-SDK_VERSION = '0.4.15'
+SDK_VERSION = '0.4.16'
 SDK_RUNTIME_MIN = '0.4.0'
 SDK_REQUIREMENT = f'nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v{SDK_VERSION}.zip'
 VERSION_PATTERN = re.compile(r'\d+\.\d+(?:\.\d+)?')
@@ -990,9 +990,15 @@ def environment_set(args):
     automation_id = require_automation_id(root)
     base_url, token = credentials['api_base_url'], credentials['token']
     environment_id = resolve_environment_id(base_url, token, args.environment)
-    variables = [{'name': key, 'value': value} for key, value in parse_kv_pairs(args.set).items()]
+    headers = {'X-Environment-ID': environment_id}
+    merged = {} if args.replace else {
+        item['name']: item['value']
+        for item in api_request(base_url, 'GET', f'/automations/{automation_id}/environment', token=token, headers=headers)['variables']
+    }
+    merged.update(parse_kv_pairs(args.set))
+    variables = [{'name': key, 'value': value} for key, value in merged.items()]
     result = api_request(base_url, 'PUT', f'/automations/{automation_id}/environment', token=token,
-                          payload={'variables': variables}, headers={'X-Environment-ID': environment_id})
+                          payload={'variables': variables}, headers=headers)
     print_result(result, args.json)
 
 
@@ -1356,7 +1362,8 @@ def main(argv=None):
     environment_set_parser = sub.add_parser('environment-set', help='Definir variáveis de ambiente (ENV) da automação')
     environment_set_parser.add_argument('--project', type=Path, default=Path('.'))
     environment_set_parser.add_argument('--environment', default=default_environment, choices=environment_choices)
-    environment_set_parser.add_argument('--set', action='append', metavar='NOME=VALOR', required=True, dest='set', help='Par nome=valor; pode repetir. Substitui todas as variáveis existentes.')
+    environment_set_parser.add_argument('--set', action='append', metavar='NOME=VALOR', required=True, dest='set', help='Par nome=valor; pode repetir. Por padrão faz merge com as variáveis existentes (mesmo nome sobrescreve o valor).')
+    environment_set_parser.add_argument('--replace', action='store_true', help='Substituir todas as variáveis existentes em vez de fazer merge')
 
     environment_get_parser = sub.add_parser('environment-get', help='Ver variáveis de ambiente (ENV) da automação')
     environment_get_parser.add_argument('--project', type=Path, default=Path('.'))
