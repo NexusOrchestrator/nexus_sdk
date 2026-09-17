@@ -38,6 +38,7 @@ O comando cria a estrutura inicial:
 meu-bot/
 ├── bot.py
 ├── inputs.json
+├── fixtures.json
 ├── nexus.toml
 └── requirements.txt
 ```
@@ -105,6 +106,24 @@ Execute localmente:
 ```bash
 nexus run --inputs inputs.json
 ```
+
+### Credenciais e filas locais (`--fixtures`)
+
+`nexus run` nunca contata a API nem o vault de credenciais do painel. Para testar um bot que usa `ctx.credential(...)` ou `ctx.queues.input`, crie um fixture com valores fictícios (não versionar):
+
+```json
+{
+  "inputs": { "nome": "Acme" },
+  "credentials": { "erp": { "username": "teste", "password": "teste" } },
+  "queues": {}
+}
+```
+
+```bash
+nexus run --fixtures fixtures.json
+```
+
+Os nomes em `credentials` precisam bater com os usados em `ctx.credential(...)` e listados em `credentials = [...]` no `nexus.toml`.
 
 ## Validação
 
