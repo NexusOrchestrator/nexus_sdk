@@ -16,7 +16,7 @@ from .project import validate_project
 from .credentials import save_credentials, load_credentials, clear_credentials, set_default_environment, list_profiles, use_profile
 from .http import api_request, api_upload, api_download
 
-SDK_VERSION = '0.4.13'
+SDK_VERSION = '0.4.14'
 SDK_RUNTIME_MIN = '0.4.0'
 SDK_REQUIREMENT = f'nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v{SDK_VERSION}.zip'
 VERSION_PATTERN = re.compile(r'\d+\.\d+(?:\.\d+)?')
@@ -287,6 +287,17 @@ def _parse_dotenv(path):
     return variables
 
 
+def _flatten_fixture_queues(queues):
+    """fixtures.json nests message under input for readability; the runtime queue context keeps it flat."""
+    queues = dict(queues)
+    source = queues.get('input')
+    if isinstance(source, dict) and 'message' in source:
+        source = dict(source)
+        queues['message'] = source.pop('message')
+        queues['input'] = source
+    return queues
+
+
 def run_local(args):
     script = entrypoint(args.project)
     fixtures = read_object(args.fixtures, limit=512 * 1024) if args.fixtures else {}
@@ -315,7 +326,7 @@ def run_local(args):
         queue_file = work / 'queues.json'
         write_object(source, inputs)
         write_object(secrets_file, fixtures.get('credentials', {}), limit=256 * 1024)
-        write_object(queue_file, fixtures.get('queues', {}))
+        write_object(queue_file, _flatten_fixture_queues(fixtures.get('queues', {})))
         environment = {key: os.environ[key] for key in ('PATH', 'SYSTEMROOT', 'WINDIR', 'LANG') if key in os.environ}
         environment.update(bot_environment)
         environment.update(HOME=str(work), TMPDIR=str(work), TEMP=str(work), TMP=str(work),

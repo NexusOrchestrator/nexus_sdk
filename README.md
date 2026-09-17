@@ -120,7 +120,7 @@ nexus run --inputs inputs.json
 }
 ```
 
-Preencha só o que o bot usa. Exemplo completo, com fila de entrada (`input` + `message`) e de saída (`output`):
+Preencha só o que o bot usa. Exemplo completo, com fila de entrada (`input` com `message` aninhada) e de saída (`output`):
 
 ```json
 {
@@ -128,8 +128,11 @@ Preencha só o que o bot usa. Exemplo completo, com fila de entrada (`input` + `
   "environment": { "URL_BASE": "https://exemplo.com" },
   "credentials": { "erp": { "username": "teste", "password": "teste" } },
   "queues": {
-    "input": { "id": "fila-1", "name": "entradas" },
-    "message": { "id": "msg-1", "payload": { "pedido_id": 123 }, "attempts": 1 },
+    "input": {
+      "id": "fila-1",
+      "name": "entradas",
+      "message": { "id": "msg-1", "payload": { "pedido_id": 123 }, "attempts": 1 }
+    },
     "output": { "id": "fila-2", "name": "resultados" }
   }
 }
