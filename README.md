@@ -227,6 +227,7 @@ nexus whoami                                                # mostra a conta e o
 nexus logout                                                # remove as credenciais salvas (use --profile para remover só um perfil)
 nexus environment-use STAGING                               # define o ambiente padrão (valida acesso antes de salvar)
 nexus publish --version 1.0.1 --publish                     # empacota, envia e publica uma nova versão
+nexus publish --version 1.0.1 --environment DEVELOPMENT      # publica e já define como atual no ambiente (implica --publish)
 nexus automation-create --name "Meu Bot"                    # cria a automação sem publicar nenhuma versão
 nexus automation-list --environment DEVELOPMENT              # lista as automações do ambiente
 nexus automation-get --automation-id <id>                    # ver detalhes de uma automação
