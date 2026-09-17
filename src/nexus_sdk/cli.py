@@ -16,7 +16,7 @@ from .project import validate_project
 from .credentials import save_credentials, load_credentials, clear_credentials, set_default_environment, list_profiles, use_profile
 from .http import api_request, api_upload, api_download
 
-SDK_VERSION = '0.4.14'
+SDK_VERSION = '0.4.15'
 SDK_RUNTIME_MIN = '0.4.0'
 SDK_REQUIREMENT = f'nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v{SDK_VERSION}.zip'
 VERSION_PATTERN = re.compile(r'\d+\.\d+(?:\.\d+)?')
@@ -1065,10 +1065,14 @@ def publish_project(args):
         fields={'version': version, 'entrypoint': script.relative_to(root).as_posix(), 'change_type': 'FEATURE'},
         file_field='package', file_name=f'{name}-{version}.zip', file_bytes=package_bytes,
     )
-    if args.publish:
+    if args.publish or args.environment:
         api_request(base_url, 'POST', f'/automations/{automation_id}/versions/{uploaded["id"]}/publish', token=token)
+    if args.environment:
+        environment_id = resolve_environment_id(base_url, token, args.environment)
+        api_request(base_url, 'POST', f'/automations/{automation_id}/versions/{uploaded["id"]}/current', token=token,
+                    headers={'X-Environment-ID': environment_id})
     print_result({'automation_id': automation_id, 'version_id': uploaded['id'], 'version': version,
-                  'published': bool(args.publish)}, args.json)
+                  'published': bool(args.publish or args.environment), 'environment': args.environment}, args.json)
 
 
 def main(argv=None):
@@ -1120,6 +1124,8 @@ def main(argv=None):
     publish.add_argument('--project', type=Path, default=Path('.'))
     publish.add_argument('--version', help='Atualizar nexus.toml e publicar com esta versão')
     publish.add_argument('--publish', action='store_true', help='Publicar a versão imediatamente após o envio')
+    publish.add_argument('--environment', choices=['DEVELOPMENT', 'STAGING', 'PRODUCTION'],
+                          help='Publicar e já definir esta versão como atual no ambiente informado (implica --publish)')
     set_current_parser = sub.add_parser('set-current', help='Definir a versão ativa da automação em um ambiente')
     set_current_parser.add_argument('--project', type=Path, default=Path('.'))
     set_current_parser.add_argument('--environment', default=default_environment, choices=['DEVELOPMENT', 'STAGING', 'PRODUCTION'], help='Ambiente onde a versão será definida como atual')
