@@ -16,9 +16,10 @@ from .project import validate_project
 from .credentials import save_credentials, load_credentials, clear_credentials, set_default_environment, list_profiles, use_profile
 from .http import api_request, api_upload, api_download
 
-SDK_VERSION = '0.4.16'
+SDK_VERSION = '0.4.17'
 SDK_RUNTIME_MIN = '0.4.0'
 SDK_REQUIREMENT = f'nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v{SDK_VERSION}.zip'
+SDK_GITIGNORE = '.venv/\n__pycache__/\nresult.json\n.env\n*.local.json\nfixtures.json\ndist/\n'
 VERSION_PATTERN = re.compile(r'\d+\.\d+(?:\.\d+)?')
 
 BOT = '''from dataclasses import dataclass
@@ -111,7 +112,7 @@ def init_project(path):
     (path / 'fixtures.json').write_text(
         json.dumps({'inputs': {'name': 'Minha empresa'}, 'environment': {}, 'credentials': {}, 'queues': {}}, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     (path / 'requirements.txt').write_text(f'{SDK_REQUIREMENT}\n# Adicione abaixo apenas as bibliotecas usadas pelo seu bot.\n', encoding='utf-8')
-    (path / '.gitignore').write_text('.venv/\n__pycache__/\nresult.json\n.env\n*.local.json\nfixtures.json\ndist/\n', encoding='utf-8')
+    (path / '.gitignore').write_text(SDK_GITIGNORE, encoding='utf-8')
     (path / 'README.md').write_text(f'# Framework Nexus\n\nExecute localmente:\n\n```sh\nnexus run --inputs inputs.json\n```\n\nCom credenciais/filas de teste:\n\n```sh\nnexus run --fixtures fixtures.json\n```\n\nEmpacote para publicar no Nexus:\n\n```sh\nnexus package\n```\n\nO `requirements.txt` já fixa o SDK na tag pública `{SDK_VERSION}`:\n\n```txt\n{SDK_REQUIREMENT}\n```\n\nAdicione suas dependências de automação abaixo dessa linha.\n', encoding='utf-8')
     print(f'Projeto criado em {path.resolve()}\nEntre na pasta e execute: nexus run --inputs inputs.json')
 
