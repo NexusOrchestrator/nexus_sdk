@@ -1,5 +1,15 @@
 Metadata-Version: 2.4
 Name: nexus-sdk
-Version: 0.4.11
+Version: 0.4.18
 Summary: Framework Python para bots do Nexus
 Requires-Python: >=3.12
+Provides-Extra: web
+Requires-Dist: playwright<2,>=1.50; extra == "web"
+Provides-Extra: desktop
+Requires-Dist: pywinauto<1,>=0.6.8; platform_system == "Windows" and extra == "desktop"
+Requires-Dist: pywin32>=306; platform_system == "Windows" and extra == "desktop"
+Provides-Extra: excel
+Requires-Dist: openpyxl<4,>=3.1; extra == "excel"
+Provides-Extra: email
+Provides-Extra: sap
+Requires-Dist: pywin32>=306; platform_system == "Windows" and extra == "sap"

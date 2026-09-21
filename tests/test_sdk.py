@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from nexus_sdk import Context, RobotError, robot
 from nexus_sdk.core import encode_object
-from nexus_sdk.cli import activation_command, ensure_sdk_requirement
+from nexus_sdk.cli import SDK_VERSION, activation_command, ensure_sdk_requirement
 
 
 class SDKTests(unittest.TestCase):
@@ -28,12 +28,12 @@ class SDKTests(unittest.TestCase):
             self.assertEqual(json.loads(result.stdout), {'message': 'Olá, Minha empresa!', 'processed': 1})
             self.assertEqual(json.loads((project / 'result.json').read_text()), json.loads(result.stdout))
             self.assertIn('Iniciando automação', result.stderr)
-            metadata = json.loads(self.cli('inspect', cwd=project).stdout)
+            metadata = json.loads(self.cli('--json', 'inspect', cwd=project).stdout)
             self.assertEqual(metadata['entrypoint'], 'bot.py')
             self.assertEqual(len(metadata['checksum']), 64)
             requirements = (project / 'requirements.txt').read_text()
-            self.assertIn('nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v0.4.2.zip', requirements)
-            validation = json.loads(self.cli('validate', '--strict', cwd=project).stdout)
+            self.assertIn(f'nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v{SDK_VERSION}.zip', requirements)
+            validation = json.loads(self.cli('--json', 'validate', '--strict', cwd=project).stdout)
             self.assertEqual(validation['warnings'], [])
             self.assertNotEqual(self.cli('init', project).returncode, 0)
             packaged = self.cli('package', cwd=project)
@@ -64,7 +64,7 @@ class SDKTests(unittest.TestCase):
             (project / 'requirements.txt').write_text('playwright==1.62.0\n')
             self.assertTrue(ensure_sdk_requirement(project))
             requirements = (project / 'requirements.txt').read_text()
-            self.assertTrue(requirements.startswith('nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v0.4.2.zip\n'))
+            self.assertTrue(requirements.startswith(f'nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v{SDK_VERSION}.zip\n'))
             self.assertIn('playwright==1.62.0', requirements)
             self.assertFalse(ensure_sdk_requirement(project))
 

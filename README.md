@@ -15,7 +15,7 @@ python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git
 Para fixar uma versão específica:
 
 ```bash
-python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git@v0.4.9
+python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git@v0.4.18
 ```
 
 Para desenvolvimento local dentro do monorepo:
@@ -23,6 +23,48 @@ Para desenvolvimento local dentro do monorepo:
 ```bash
 python -m pip install -e ./apps/sdk
 ```
+
+## Módulos opcionais de automação
+
+O SDK principal não instala bibliotecas de navegador, planilhas nem componentes Windows. No `requirements.txt` do bot, adicione os extras necessários à linha do SDK, por exemplo:
+
+```text
+nexus-sdk[web,excel,email] @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v0.4.18.zip
+```
+
+Para desenvolvimento no monorepo: `python -m pip install -e './apps/sdk[web,excel,email]'`.
+Depois execute `nexus venv --install-requirements` no projeto. O Agent instala as dependências do pacote e, quando vê `[web]`, também prepara o Chromium no cache da VM. Firefox/WebKit exigem instalação separada dos respectivos navegadores.
+
+| Extra | Import principal | Ambiente |
+|---|---|---|
+| `web` | `from nexus_sdk.web import Browser` | Windows, Linux, macOS; Playwright |
+| `excel` | `from nexus_sdk.excel import Spreadsheet` | `.xlsx` e `.xlsm`; openpyxl |
+| `email` | `from nexus_sdk.email import send_mail, read_mail` | SMTP/IMAP sobre TLS; biblioteca padrão |
+| `desktop` | `from nexus_sdk.desktop import DesktopApp` | Apenas Windows, sessão interativa; pywinauto |
+| `sap` | `from nexus_sdk.sap import SapGui` | Apenas SAP GUI para Windows; scripting habilitado |
+
+Exemplos curtos:
+
+```python
+from nexus_sdk.web import Browser
+from nexus_sdk.excel import Spreadsheet
+
+with Browser() as browser:
+    page = browser.open("https://exemplo.com")
+    page.fill("Usuário", "teste")
+    page.click("Entrar")
+
+book = Spreadsheet.create("pedidos.xlsx", headers=["id", "status"])
+book.append({"id": 123, "status": "novo"})
+book.update_where("id", 123, {"status": "concluído"})
+book.save()
+```
+
+`Spreadsheet.open(..., data_only=True)` serve para leitura de valores calculados; o SDK bloqueia `save()` nesse modo para não descartar fórmulas. Em atualizações, use a abertura padrão. A API `native` permite acessar recursos avançados do openpyxl.
+
+Para envio, `send_mail(...)` requer host, porta, remetente, destinatário, texto e credenciais SMTP; `read_mail(...)` lê via IMAP sem marcar mensagens como lidas. Passe segredos via `ctx.credential(...)`, nunca no código ou nos logs. O extra `email` não provisiona caixa postal nem substitui a configuração do provedor.
+
+`DesktopApp` automatiza controles acessíveis de aplicativos Windows, não uma sessão sem interface gráfica. `SapGui.connect()` usa uma sessão **já aberta** no SAP GUI for Windows; não se aplica ao SAP Fiori/web e depende de SAP GUI Scripting permitido no cliente e no servidor. Em ambos os casos, valide a execução na mesma sessão Windows usada pelo Agent antes de colocar o robô em produção.
 
 ## Criando um bot
 

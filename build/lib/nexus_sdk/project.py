@@ -88,7 +88,7 @@ def validate_project(project, *, check_environment=True, credentials=None, queue
                 continue
             if line.startswith('-r '):
                 check_requirements(path.parent / line[3:].strip())
-            elif re.match(r'^[A-Za-z0-9_.-]+\s*@\s*https://github\.com/.+/archive/refs/tags/[^/\s]+\.zip(?:\s*#.*)?$', line):
+            elif re.match(r'^[A-Za-z0-9_.-]+(?:\[[A-Za-z0-9_, -]+\])?\s*@\s*https://github\.com/.+/archive/refs/tags/[^/\s]+\.zip(?:\s*#.*)?$', line):
                 continue
             elif '==' not in line or line.startswith(('-', '.', '/')):
                 warnings.append('Dependência sem versão exata ou opção especial; revisão necessária em requirements.txt.')
