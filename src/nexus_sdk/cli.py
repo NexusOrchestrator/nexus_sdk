@@ -16,7 +16,7 @@ from .project import validate_project
 from .credentials import save_credentials, load_credentials, clear_credentials, set_default_environment, list_profiles, use_profile
 from .http import api_request, api_upload, api_download
 
-SDK_VERSION = '0.4.17'
+SDK_VERSION = '0.4.18'
 SDK_RUNTIME_MIN = '0.4.0'
 SDK_REQUIREMENT = f'nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v{SDK_VERSION}.zip'
 SDK_GITIGNORE = '.venv/\n__pycache__/\nresult.json\n.env\n*.local.json\nfixtures.json\ndist/\n'
@@ -162,16 +162,21 @@ def safe_zip_name(name: str):
 def ensure_sdk_requirement(root: Path):
     requirements = root / 'requirements.txt'
     current = requirements.read_text(encoding='utf-8') if requirements.exists() else ''
-    if SDK_REQUIREMENT in current:
+    if SDK_REQUIREMENT in current or re.search(
+        rf'(?mi)^\s*nexus[-_]sdk\[[a-z0-9_, -]+\]\s*@\s*https://github\.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v{re.escape(SDK_VERSION)}\.zip\s*$',
+        current,
+    ):
         return False
     lines = current.splitlines()
+    extras = re.search(r'^\s*nexus[-_]sdk(\[[a-z0-9_, -]+\])', current, re.IGNORECASE | re.MULTILINE)
+    requirement = SDK_REQUIREMENT.replace('nexus-sdk @', f'nexus-sdk{extras.group(1)} @') if extras else SDK_REQUIREMENT
     without_old_sdk = [
         line for line in lines
         if not re.match(r'^\s*nexus[-_]sdk\b', line, re.IGNORECASE)
         and 'github.com/NexusOrchestrator/nexus_sdk' not in line
         and 'github.com/nexusorchestrator/nexus_sdk' not in line.lower()
     ]
-    content = '\n'.join([SDK_REQUIREMENT, *without_old_sdk]).rstrip() + '\n'
+    content = '\n'.join([requirement, *without_old_sdk]).rstrip() + '\n'
     requirements.write_text(content, encoding='utf-8')
     return True
 

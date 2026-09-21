@@ -5,4 +5,4 @@ from .models import Model
 
 __all__ = ['Automation', 'Context', 'RobotError', 'robot', 'Model', 'BusinessError',
            'ConfigurationError', 'ValidationError', 'TransientError']
-__version__ = '0.4.17'
+__version__ = '0.4.18'

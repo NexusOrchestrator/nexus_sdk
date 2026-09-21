@@ -73,14 +73,14 @@ class FrameworkTests(unittest.TestCase):
             first = cli('package', '--project', project, cwd=root)
             self.assertEqual(first.returncode, 0, first.stderr)
             metadata = json.loads(first.stdout)
-            self.assertEqual(metadata['file'], str((project / 'dist' / 'meu-projeto.zip').resolve()))
+            self.assertEqual(metadata['file'], str((project / 'dist' / 'meu-projeto-1.0.0.zip').resolve()))
             second = cli('package', '--project', project, cwd=root)
             self.assertEqual(json.loads(second.stdout)['checksum'], metadata['checksum'])
             config = project / 'nexus.toml'
             config.write_text('entrypoint = "bot.py"\nversion = "1.0.0"\n')
             self.assertEqual(json.loads(cli('package', '--project', project, cwd=root).stdout)['file'], metadata['file'])
             config.write_text('name = "financeiro"\nentrypoint = "bot.py"\n')
-            self.assertTrue(json.loads(cli('package', '--project', project, cwd=root).stdout)['file'].endswith('/financeiro.zip'))
+            self.assertTrue(json.loads(cli('package', '--project', project, cwd=root).stdout)['file'].endswith('/financeiro-1.0.0.zip'))
             explicit = root / 'custom.zip'
             self.assertEqual(json.loads(cli('package', '--project', project, '--output', explicit).stdout)['file'], str(explicit.resolve()))
             config.write_text('name = "../escape"\nentrypoint = "bot.py"\n')
