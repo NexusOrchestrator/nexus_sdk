@@ -138,7 +138,8 @@ class Entrada(Model):
 class MeuBot(Automation):
     input_model = Entrada
 
-    def run(self, ctx: Context, data: Entrada):
+    def run(self, ctx: Context):
+        data = ctx.params
         ctx.log(f"Olá, {data.nome}")
         return {"mensagem": f"Processado para {data.nome}"}
 ```
