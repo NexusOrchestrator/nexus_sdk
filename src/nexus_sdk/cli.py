@@ -162,8 +162,8 @@ def safe_zip_name(name: str):
 def ensure_sdk_requirement(root: Path):
     requirements = root / 'requirements.txt'
     current = requirements.read_text(encoding='utf-8') if requirements.exists() else ''
-    if SDK_REQUIREMENT in current or re.search(
-        rf'(?mi)^\s*nexus[-_]sdk\[[a-z0-9_, -]+\]\s*@\s*https://github\.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v{re.escape(SDK_VERSION)}\.zip\s*$',
+    if re.search(
+        rf'(?mi)^\s*nexus[-_]sdk(?:\[[a-z0-9_, -]+\])?\s*@\s*https://github\.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v{re.escape(SDK_VERSION)}\.zip\s*$',
         current,
     ):
         return False

@@ -68,6 +68,21 @@ class SDKTests(unittest.TestCase):
             self.assertIn('playwright==1.62.0', requirements)
             self.assertFalse(ensure_sdk_requirement(project))
 
+    def test_venv_repairs_malformed_sdk_requirement(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            (project / 'requirements.txt').write_text(
+                'nexus-sdk @ nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v0.4.16.zip\n'
+                'requests==2.32.0\n',
+                encoding='utf-8',
+            )
+            self.assertTrue(ensure_sdk_requirement(project))
+            self.assertEqual(
+                (project / 'requirements.txt').read_text(encoding='utf-8'),
+                f'nexus-sdk @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v{SDK_VERSION}.zip\n'
+                'requests==2.32.0\n',
+            )
+
     def test_activation_command_points_to_project_venv(self):
         command = activation_command(Path('/tmp/bot/.venv'))
         if os.name == 'nt':
