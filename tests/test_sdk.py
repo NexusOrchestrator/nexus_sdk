@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from nexus_sdk import Context, RobotError, robot
 from nexus_sdk.core import encode_object
 from nexus_sdk.cli import SDK_VERSION, activation_command, ensure_sdk_requirement
@@ -118,6 +119,13 @@ class SDKTests(unittest.TestCase):
         context = Context(inputs={}, secrets={'erp': {'password': 'hidden'}})
         self.assertEqual(context.secrets['erp']['password'], 'hidden')
         self.assertNotIn('hidden', repr(context))
+
+    def test_artifact_path_is_scoped_to_runtime_directory(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {'NEXUS_ARTIFACTS_DIR': directory}):
+            target = Context().artifact_path('evidence.png')
+            self.assertEqual(target, Path(directory) / 'evidence.png')
+            with self.assertRaises(RobotError):
+                Context().artifact_path('../secret.txt')
 
     def test_contract_validation(self):
         for value in ([], {'value': float('nan')}, {'value': object()}, {'value': 'a' * 32768}):

@@ -53,7 +53,9 @@ def main(argv=None):
             message = message.replace(secret, '***')
         target = os.environ.get('NEXUS_ERROR_FILE')
         if target:
-            write_object(target, {'code': code, 'message': message})
+            frames = [{"file": Path(frame.filename).name, "line": frame.lineno, "function": frame.name}
+                      for frame in traceback.extract_tb(error.__traceback__)[-12:]]
+            write_object(target, {'code': code, 'message': message, 'exception_type': type(error).__name__, 'frames': frames})
         print(f'{code}: {message}', file=sys.stderr)
         if args.debug:
             traceback.print_exc()
