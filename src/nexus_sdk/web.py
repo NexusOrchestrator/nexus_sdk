@@ -4,12 +4,13 @@ from .errors import ConfigurationError
 
 
 class Browser:
-    def __init__(self, *, browser="chromium", headless=True, timeout_ms=30000):
+    def __init__(self, *, browser="chromium", headless=True, timeout_ms=30000, capture_failure_screenshot=True):
         if browser not in {"chromium", "firefox", "webkit"}:
             raise ConfigurationError("Navegador deve ser chromium, firefox ou webkit.")
         if timeout_ms <= 0:
             raise ConfigurationError("Timeout do navegador deve ser positivo.")
         self.browser_name, self.headless, self.timeout_ms = browser, headless, timeout_ms
+        self.capture_failure_screenshot = capture_failure_screenshot
         self._playwright = self._browser = self._context = None
 
     def __enter__(self):
@@ -29,7 +30,7 @@ class Browser:
 
     def __exit__(self, exc_type, *_):
         try:
-            if exc_type and self._context:
+            if exc_type and self._context and self.capture_failure_screenshot:
                 import os
                 artifacts = os.environ.get("NEXUS_ARTIFACTS_DIR")
                 if artifacts:

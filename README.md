@@ -15,7 +15,7 @@ python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git
 Para fixar uma versão específica:
 
 ```bash
-python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git@v0.4.18
+python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git@v0.4.20
 ```
 
 Para desenvolvimento local dentro do monorepo:
@@ -29,7 +29,7 @@ python -m pip install -e ./apps/sdk
 O SDK principal não instala bibliotecas de navegador, planilhas nem componentes Windows. No `requirements.txt` do bot, adicione os extras necessários à linha do SDK, por exemplo:
 
 ```text
-nexus-sdk[web,excel,email] @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v0.4.18.zip
+nexus-sdk[web,excel,email] @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v0.4.20.zip
 ```
 
 Para desenvolvimento no monorepo: `python -m pip install -e './apps/sdk[web,excel,email]'`.
@@ -64,7 +64,29 @@ book.save()
 
 Para envio, `send_mail(...)` requer host, porta, remetente, destinatário, texto e credenciais SMTP; `read_mail(...)` lê via IMAP sem marcar mensagens como lidas. Passe segredos via `ctx.credential(...)`, nunca no código ou nos logs. O extra `email` não provisiona caixa postal nem substitui a configuração do provedor.
 
-`DesktopApp` automatiza controles acessíveis de aplicativos Windows, não uma sessão sem interface gráfica. `SapGui.connect()` usa uma sessão **já aberta** no SAP GUI for Windows; não se aplica ao SAP Fiori/web e depende de SAP GUI Scripting permitido no cliente e no servidor. Em ambos os casos, valide a execução na mesma sessão Windows usada pelo Agent antes de colocar o robô em produção.
+`DesktopApp` automatiza controles acessíveis de aplicativos Windows, não uma sessão sem interface gráfica. Para capturar evidências de falhas, use o ciclo `with`; por padrão, o SDK anexa uma imagem da janela ao finalizar com exceção:
+
+```python
+from nexus_sdk.desktop import DesktopApp
+
+with DesktopApp.connect(title="Meu ERP") as app:
+  janela = app.window(title="Meu ERP")
+  DesktopApp.click(app.control(janela, title="Processar"))
+```
+
+A captura automática pode ser desativada ou ampliada para a tela inteira:
+
+```python
+with DesktopApp.connect(title="Meu ERP", capture_failure_screenshot=False) as app:
+  ...
+
+with DesktopApp.connect(title="Meu ERP", capture_mode="screen") as app:
+  ...
+```
+
+`window` é o padrão e captura somente a janela selecionada; `screen` captura a área de trabalho inteira. As imagens são enviadas como artefatos da execução, não como linhas de log. A captura depende de uma sessão Windows interativa e da variável interna `NEXUS_ARTIFACTS_DIR` fornecida pelo Agent.
+
+`SapGui.connect()` usa uma sessão **já aberta** no SAP GUI for Windows; não se aplica ao SAP Fiori/web e depende de SAP GUI Scripting permitido no cliente e no servidor. Em ambos os casos, valide a execução na mesma sessão Windows usada pelo Agent antes de colocar o robô em produção.
 
 ## Criando um bot
 

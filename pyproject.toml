@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nexus-sdk"
-version = "0.4.19"
+version = "0.4.20"
 description = "Framework Python para bots do Nexus"
 requires-python = ">=3.12"
 dependencies = []
 
 [project.optional-dependencies]
 web = ["playwright>=1.50,<2"]
-desktop = ["pywinauto>=0.6.8,<1; platform_system == 'Windows'", "pywin32>=306; platform_system == 'Windows'"]
+desktop = ["pywinauto>=0.6.8,<1; platform_system == 'Windows'", "pywin32>=306; platform_system == 'Windows'", "Pillow>=10,<13; platform_system == 'Windows'"]
 excel = ["openpyxl>=3.1,<4"]
 email = []  # SMTP, IMAP and MIME are provided by Python's standard library.
 sap = ["pywin32>=306; platform_system == 'Windows'"]
