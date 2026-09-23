@@ -27,8 +27,17 @@ class Browser:
             self.__exit__(None, None, None)
             raise
 
-    def __exit__(self, *_):
+    def __exit__(self, exc_type, *_):
         try:
+            if exc_type and self._context:
+                import os
+                artifacts = os.environ.get("NEXUS_ARTIFACTS_DIR")
+                if artifacts:
+                    for index, page in enumerate(self._context.pages[-3:]):
+                        try:
+                            page.screenshot(path=str(Path(artifacts) / f"browser-failure-{index + 1}.png"), full_page=True)
+                        except Exception:
+                            pass
             if self._context:
                 self._context.close()
             if self._browser:

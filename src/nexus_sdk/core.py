@@ -124,6 +124,17 @@ class Context:
             return value[field]
         return value
 
+    def artifact_path(self, name):
+        """Return a safe path whose file will be attached to the execution (max limits enforced by Agent)."""
+        if not isinstance(name, str) or not name or Path(name).name != name or name in {'.', '..'}:
+            raise ValidationError('O nome do artefato deve ser um arquivo simples, sem diretórios.')
+        root = os.environ.get('NEXUS_ARTIFACTS_DIR')
+        if not root:
+            raise ConfigurationError('Runtime sem suporte a artefatos; atualize o Agente.')
+        target = Path(root) / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        return target
+
     def retry(self, operation, *, idempotent=False, attempts=3, delay=0.5):
         if not idempotent:
             raise ConfigurationError('Retries exigem idempotent=True e operação segura para repetição.')
