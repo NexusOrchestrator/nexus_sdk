@@ -37,7 +37,7 @@ Depois execute `nexus venv --install-requirements` no projeto. O Agent instala a
 
 | Extra | Import principal | Ambiente |
 |---|---|---|
-| `web` | `from nexus_sdk.web import Browser` | Windows, Linux, macOS; Playwright |
+| `web` | `from nexus_sdk.web import Browser` | Windows, Linux, macOS; Playwright; localizadores `role`, `label`, `text`, `test_id`, `css` e `xpath` |
 | `excel` | `from nexus_sdk.excel import Spreadsheet` | `.xlsx` e `.xlsm`; openpyxl |
 | `email` | `from nexus_sdk.email import send_mail, read_mail` | SMTP/IMAP sobre TLS; biblioteca padrão |
 | `desktop` | `from nexus_sdk.desktop import DesktopApp` | Apenas Windows, sessão interativa; pywinauto |

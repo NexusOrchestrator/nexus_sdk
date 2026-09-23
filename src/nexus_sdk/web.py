@@ -69,9 +69,9 @@ class WebPage:
             return self.native.get_by_text(value)
         if by == "test_id":
             return self.native.get_by_test_id(value)
-        if by == "css":
+        if by in {"css", "xpath"}:
             return self.native.locator(value)
-        raise ConfigurationError("Localizador deve ser role, label, text, test_id ou css.")
+        raise ConfigurationError("Localizador deve ser role, label, text, test_id, css ou xpath.")
 
     def click(self, value: str, *, by="role", role="button"):
         self.locator(value, by=by, role=role).click()

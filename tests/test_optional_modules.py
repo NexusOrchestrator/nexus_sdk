@@ -57,6 +57,21 @@ def test_web_uses_playwright_locators_and_keeps_native_page():
         Browser().open("https://example.com")
 
 
+def test_web_supports_xpath_locators():
+    native = MagicMock()
+    page = WebPage(native)
+    xpath = '//*[@id="login"]'
+
+    page.click(xpath, by="xpath")
+    page.fill(xpath, "valor", by="xpath")
+    assert page.text(xpath, by="xpath") == native.locator.return_value.inner_text.return_value
+
+    assert native.locator.call_count == 3
+    native.locator.assert_any_call(xpath)
+    native.locator.return_value.click.assert_called_once_with()
+    native.locator.return_value.fill.assert_called_once_with("valor")
+
+
 def test_browser_lifecycle_closes_native_resources():
     playwright = MagicMock()
     manager = MagicMock()
