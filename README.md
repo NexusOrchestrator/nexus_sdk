@@ -15,7 +15,7 @@ python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git
 Para fixar uma versão específica:
 
 ```bash
-python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git@v0.4.20
+python -m pip install git+https://github.com/NexusOrchestrator/nexus_sdk.git@v0.4.21
 ```
 
 Para desenvolvimento local dentro do monorepo:
@@ -29,7 +29,7 @@ python -m pip install -e ./apps/sdk
 O SDK principal não instala bibliotecas de navegador, planilhas nem componentes Windows. No `requirements.txt` do bot, adicione os extras necessários à linha do SDK, por exemplo:
 
 ```text
-nexus-sdk[web,excel,email] @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v0.4.20.zip
+nexus-sdk[web,excel,email] @ https://github.com/NexusOrchestrator/nexus_sdk/archive/refs/tags/v0.4.21.zip
 ```
 
 Para desenvolvimento no monorepo: `python -m pip install -e './apps/sdk[web,excel,email]'`.
