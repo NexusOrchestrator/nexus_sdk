@@ -67,7 +67,7 @@ def test_web_supports_xpath_locators():
     assert page.text(xpath, by="xpath") == native.locator.return_value.inner_text.return_value
 
     assert native.locator.call_count == 3
-    native.locator.assert_any_call(xpath)
+    native.locator.assert_called_with(xpath)
     native.locator.return_value.click.assert_called_once_with()
     native.locator.return_value.fill.assert_called_once_with("valor")
 
