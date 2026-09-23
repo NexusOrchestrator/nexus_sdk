@@ -70,6 +70,20 @@ def test_browser_lifecycle_closes_native_resources():
         playwright.stop.assert_called_once()
 
 
+def test_browser_failure_screenshot_can_be_disabled():
+    playwright = MagicMock()
+    manager = MagicMock()
+    manager.start.return_value = playwright
+    context = playwright.chromium.launch.return_value.new_context.return_value
+    context.pages = []
+    with patch("playwright.sync_api.sync_playwright", return_value=manager):
+        with patch.dict("os.environ", {"NEXUS_ARTIFACTS_DIR": "/tmp/nexus-artifacts"}):
+            with pytest.raises(RuntimeError):
+                with Browser(capture_failure_screenshot=False):
+                    raise RuntimeError("falha")
+    context.close.assert_called_once()
+
+
 def test_desktop_and_sap_require_windows():
     with patch("nexus_sdk.desktop.platform.system", return_value="Linux"):
         with pytest.raises(ConfigurationError):
@@ -77,6 +91,22 @@ def test_desktop_and_sap_require_windows():
     with patch("nexus_sdk.sap.platform.system", return_value="Linux"):
         with pytest.raises(ConfigurationError):
             SapGui.connect()
+
+
+def test_desktop_capture_configuration_and_failure_artifact(tmp_path, monkeypatch):
+    native = MagicMock()
+    window = native.window.return_value
+    image = window.capture_as_image.return_value
+    monkeypatch.setenv("NEXUS_ARTIFACTS_DIR", str(tmp_path))
+    app = DesktopApp(native, capture_mode="window")
+    app.window(title="ERP")
+    with pytest.raises(RuntimeError):
+        with app:
+            raise RuntimeError("falha")
+    image.save.assert_called_once_with(tmp_path / "desktop-failure-window.png")
+
+    with pytest.raises(ConfigurationError):
+        DesktopApp(native, capture_mode="invalid")
 
 
 def test_sap_uses_existing_session_without_opening_transaction_implicitly():
