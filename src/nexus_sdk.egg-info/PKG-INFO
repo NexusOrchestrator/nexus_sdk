@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: nexus-sdk
-Version: 0.4.18
+Version: 0.4.19
 Summary: Framework Python para bots do Nexus
 Requires-Python: >=3.12
 Provides-Extra: web
