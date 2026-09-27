@@ -5,7 +5,7 @@ import uuid
 import urllib.error
 import urllib.request
 from .errors import RobotError
-SDK_USER_AGENT = 'NexusOrch-SDK/0.4.23'
+SDK_USER_AGENT = 'NexusOrch-SDK/0.4.24'
 
 
 def api_request(base_url, method, path, token=None, payload=None, headers=None, timeout=30):
