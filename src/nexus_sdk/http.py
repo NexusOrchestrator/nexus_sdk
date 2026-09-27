@@ -5,12 +5,13 @@ import uuid
 import urllib.error
 import urllib.request
 from .errors import RobotError
+SDK_USER_AGENT = 'NexusOrch-SDK/0.4.23'
 
 
 def api_request(base_url, method, path, token=None, payload=None, headers=None, timeout=30):
     url = f'{base_url.rstrip("/")}{path}'
     data = json.dumps(payload).encode('utf-8') if payload is not None else None
-    request_headers = {'Content-Type': 'application/json'}
+    request_headers = {'Content-Type': 'application/json', 'User-Agent': SDK_USER_AGENT}
     if token:
         request_headers['Authorization'] = f'Bearer {token}'
     if headers:
@@ -34,7 +35,7 @@ def api_request(base_url, method, path, token=None, payload=None, headers=None, 
 def api_download(base_url, path, token=None, timeout=60):
     """GET a binary response (e.g. a version package ZIP) without attempting JSON parsing."""
     url = f'{base_url.rstrip("/")}{path}'
-    request_headers = {}
+    request_headers = {'User-Agent': SDK_USER_AGENT}
     if token:
         request_headers['Authorization'] = f'Bearer {token}'
     request = urllib.request.Request(url, headers=request_headers, method='GET')
@@ -77,6 +78,7 @@ def api_upload(base_url, path, token, fields, file_field, file_name, file_bytes,
     headers = {
         'Content-Type': f'multipart/form-data; boundary={boundary}',
         'Authorization': f'Bearer {token}',
+        'User-Agent': SDK_USER_AGENT,
     }
     request = urllib.request.Request(url, data=bytes(body), headers=headers, method='POST')
     try:
